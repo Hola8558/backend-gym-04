@@ -1,5 +1,6 @@
 import { Body, Controller, Get, Post } from '@nestjs/common';
 import { AccountsService } from './accounts.service';
+import { CreateAccountDto } from './dto/create-account.dto';
 
 @Controller('accounts')
 export class AccountsController {
@@ -11,7 +12,7 @@ export class AccountsController {
   }
 
   @Post()
-  create(@Body() _body: unknown) {
-    return { accepted: true, placeholder: true };
+  create(@Body() dto: CreateAccountDto) {
+    return this.accountsService.createAccountWithUser(dto);
   }
 }
