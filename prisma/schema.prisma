@@ -1,0 +1,215 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  owner
+  coach
+  customer
+
+  @@map("user_role")
+}
+
+enum AccountType {
+  gym
+  coach
+
+  @@map("account_type")
+}
+
+enum GenericStatus {
+  active
+  pending
+  inactive
+  deleted
+
+  @@map("generic_status")
+}
+
+enum MuscularGroup {
+  pecho
+  espalda
+  hombro_anterior
+  hombro_lateral
+  hombro_posterior
+  biceps
+  triceps
+  cuadriceps
+  femorales
+  gluteos
+  pantorrillas
+  core
+
+  @@map("muscular_group")
+}
+
+model Account {
+  idAccount Int           @id @default(autoincrement()) @map("id_account")
+  name      String?       @map("name")
+  type      AccountType   @map("type")
+  createdAt DateTime      @map("created_at")
+  status    GenericStatus @map("status")
+
+  users                 User[]
+  membershipTypes       MembershipType[]
+  routines              Routine[]
+  exerciseFavs          ExerciseFav[]
+  customerMemberships   CustomerMembership[]
+
+  @@map("accounts")
+}
+
+model User {
+  idUser       Int           @id @default(autoincrement()) @map("id_user")
+  idAccount    Int           @map("id_account")
+  branch       String?       @map("branch")
+  userNumber   String?       @map("user_number")
+  email        String?       @map("email")
+  passwordHash String?       @map("password_hash")
+  role         UserRole      @map("role")
+  createdAt    DateTime      @map("created_at")
+  status       GenericStatus @map("status")
+
+  account             Account              @relation(fields: [idAccount], references: [idAccount])
+  profile             Profile?
+  customerMembership  CustomerMembership?
+  routines            Routine[]
+  entryLogs           EntryLog[]
+  featureFlags        FeatureFlag[]
+  coachedProfiles     Profile[]            @relation("ProfileCoach")
+
+  @@map("users")
+}
+
+model Profile {
+  idUser          Int           @id @map("id_user")
+  idCoach         Int?          @map("id_coach")
+  name            String?       @map("name")
+  lastName        String?       @map("last_name")
+  phone           String?       @map("phone")
+  emergencyPhone  String?       @map("emergency_phone")
+  createdAt       DateTime      @map("created_at")
+  status          GenericStatus @map("status")
+
+  user  User  @relation(fields: [idUser], references: [idUser])
+  coach User? @relation("ProfileCoach", fields: [idCoach], references: [idUser])
+
+  @@map("profiles")
+}
+
+model MembershipType {
+  idAccount        Int             @map("id_account")
+  idMembershipType Int             @map("id_membership_type")
+  name             String?         @map("name")
+  durationDays     Int?            @map("duration_days")
+  price            Decimal?        @map("price") @db.Decimal(12, 2)
+  createdAt        DateTime        @map("created_at")
+  status           GenericStatus   @map("status")
+
+  account               Account                @relation(fields: [idAccount], references: [idAccount])
+  customerMemberships   CustomerMembership[]
+
+  @@id([idAccount, idMembershipType])
+  @@map("membership_types")
+}
+
+/// Includes id_account to reference the composite key on membership_types (multi-tenant safe).
+model CustomerMembership {
+  idCustomerMembership Int           @id @default(autoincrement()) @map("id_customer_membership")
+  idAccount            Int           @map("id_account")
+  idUser               Int           @unique @map("id_user")
+  idMembershipType     Int           @map("id_membership_type")
+  startDate            DateTime      @map("start_date") @db.Date
+  endDate              DateTime?     @map("end_date") @db.Date
+  createdAt            DateTime      @map("created_at")
+  status               GenericStatus @map("status")
+
+  account        Account         @relation(fields: [idAccount], references: [idAccount])
+  user           User            @relation(fields: [idUser], references: [idUser])
+  membershipType MembershipType  @relation(fields: [idAccount, idMembershipType], references: [idAccount, idMembershipType])
+
+  @@map("customer_memberships")
+}
+
+model Routine {
+  idRoutine  Int           @id @default(autoincrement()) @map("id_routine")
+  idAccount  Int           @map("id_account")
+  idUser     Int           @map("id_user")
+  name       String?       @map("name")
+  data       Json          @map("data")
+  createdAt  DateTime      @map("created_at")
+  status     GenericStatus @map("status")
+
+  account Account @relation(fields: [idAccount], references: [idAccount])
+  user    User    @relation(fields: [idUser], references: [idUser])
+
+  @@map("routines")
+}
+
+model Exercise {
+  idExercise     Int            @id @default(autoincrement()) @map("id_exercise")
+  name           String?        @map("name")
+  muscularGroup  MuscularGroup  @map("muscular_group")
+  description    String?        @map("description")
+  url            String?        @map("url")
+
+  favs ExerciseFav[]
+
+  @@map("exercises")
+}
+
+model ExerciseFav {
+  idAccount  Int @map("id_account")
+  idExercise Int @map("id_exercise")
+
+  account  Account  @relation(fields: [idAccount], references: [idAccount])
+  exercise Exercise @relation(fields: [idExercise], references: [idExercise])
+
+  @@id([idAccount, idExercise])
+  @@map("exercises_favs")
+}
+
+model EntryLog {
+  idUser      Int           @map("id_user")
+  idEntryLog  Int           @default(autoincrement()) @map("id_entry_log")
+  entryDate   DateTime      @map("entry_date")
+  status      GenericStatus @map("status")
+
+  user User @relation(fields: [idUser], references: [idUser])
+
+  @@id([idUser, idEntryLog])
+  @@map("entry_logs")
+}
+
+model Feature {
+  idFeature       Int           @id @default(autoincrement()) @map("id_feature")
+  idFeatureParent Int?          @map("id_feature_parent")
+  name            String?       @map("name")
+  role            UserRole      @map("role")
+  customizable    Boolean       @map("customizable")
+  createdAt       DateTime      @map("created_at")
+  status          GenericStatus @map("status")
+
+  parent   Feature?       @relation("FeatureTree", fields: [idFeatureParent], references: [idFeature])
+  children Feature[]      @relation("FeatureTree")
+  flags    FeatureFlag[]
+
+  @@map("features")
+}
+
+model FeatureFlag {
+  idUser    Int           @map("id_user")
+  idFeature Int           @map("id_feature")
+  status    GenericStatus @map("status")
+
+  user    User    @relation(fields: [idUser], references: [idUser])
+  feature Feature @relation(fields: [idFeature], references: [idFeature])
+
+  @@id([idUser, idFeature])
+  @@map("feature_flags")
+}
