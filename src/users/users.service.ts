@@ -87,6 +87,7 @@ export class UsersService {
               lastName: dto.last_name,
               phone: dto.phone ?? null,
               emergencyPhone: dto.emergency_phone ?? null,
+              timeSessionAlive: 7,
               status: GenericStatus.active,
               createdAt: now,
             },
