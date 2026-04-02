@@ -1,4 +1,4 @@
-import { AccountType, UserRole } from '@prisma/client';
+import { AccountType } from '@prisma/client';
 import { IsEmail, IsEnum, IsOptional, IsString, MinLength } from 'class-validator';
 
 export class CreateAccountDto {
@@ -13,11 +13,8 @@ export class CreateAccountDto {
   email: string;
 
   @IsString()
-  @MinLength(1)
-  password_hash: string;
-
-  @IsEnum(UserRole)
-  role: UserRole;
+  @MinLength(8)
+  password: string;
 
   @IsOptional()
   @IsString()

@@ -1,15 +1,19 @@
-import { Injectable } from '@nestjs/common';
-import { GenericStatus, UserRole } from '@prisma/client';
-import { randomInt } from 'crypto';
+import {
+  ForbiddenException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
+import { GenericStatus, Prisma, UserRole } from '@prisma/client';
+import * as bcrypt from 'bcrypt';
 import { PrismaService } from '../core/prisma/prisma.service';
 import { CreateUserDto } from './dto/create-user.dto';
 
-const USER_NUMBER_ALPHANUM = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+const NUMBERS = '0123456789';
 
 function generateUserNumber(): string {
   let out = '';
   for (let i = 0; i < 5; i++) {
-    out += USER_NUMBER_ALPHANUM[randomInt(USER_NUMBER_ALPHANUM.length)];
+    out += NUMBERS[Math.floor(Math.random() * NUMBERS.length)];
   }
   return out;
 }
@@ -33,33 +37,83 @@ export type CreateUserResponse = {
 export class UsersService {
   constructor(private readonly prisma: PrismaService) {}
 
+  private async checkAccountCapacity(
+    id_account: number,
+    tx: Prisma.TransactionClient,
+  ): Promise<void> {
+    const detail = await tx.accountDetail.findUnique({
+      where: { idAccount: id_account },
+    });
+
+    if (!detail) {
+      throw new NotFoundException(
+        'Account details not found; cannot verify capacity.',
+      );
+    }
+
+    const userCount = await tx.user.count({
+      where: { idAccount: id_account },
+    });
+
+    if (userCount >= detail.customersLimit) {
+      throw new ForbiddenException(
+        'Account has reached its maximum customer limit. Please upgrade your plan.',
+      );
+    }
+  }
+
   async createUserWithProfile(dto: CreateUserDto): Promise<CreateUserResponse> {
     const branch = dto.branch ?? 'A';
     const userNumber = generateUserNumber();
     const now = new Date();
+    const passwordHash = await bcrypt.hash(dto.password, 10);
 
-    const row = await this.prisma.user.create({
-      data: {
-        idAccount: dto.id_account,
-        branch,
-        userNumber,
-        email: dto.email,
-        passwordHash: dto.password_hash,
-        role: dto.role,
-        status: GenericStatus.active,
-        createdAt: now,
-        profile: {
-          create: {
-            name: dto.name,
-            lastName: dto.last_name,
-            phone: dto.phone ?? null,
-            emergencyPhone: dto.emergency_phone ?? null,
-            status: GenericStatus.active,
-            createdAt: now,
+    const row = await this.prisma.$transaction(async (tx) => {
+      await this.checkAccountCapacity(dto.id_account, tx);
+
+      const created = await tx.user.create({
+        data: {
+          idAccount: dto.id_account,
+          branch,
+          userNumber,
+          email: dto.email,
+          passwordHash,
+          role: dto.role,
+          status: GenericStatus.active,
+          createdAt: now,
+          profile: {
+            create: {
+              name: dto.name,
+              lastName: dto.last_name,
+              phone: dto.phone ?? null,
+              emergencyPhone: dto.emergency_phone ?? null,
+              status: GenericStatus.active,
+              createdAt: now,
+            },
           },
         },
-      },
-      include: { profile: true },
+        include: { profile: true },
+      });
+
+      const defaultFeatures = await tx.feature.findMany({
+        where: {
+          role: created.role,
+          customizable: false,
+          status: GenericStatus.active,
+        },
+      });
+
+      if (defaultFeatures.length > 0) {
+        await tx.featureFlag.createMany({
+          data: defaultFeatures.map((f) => ({
+            idUser: created.idUser,
+            idFeature: f.idFeature,
+            status: GenericStatus.active,
+          })),
+        });
+      }
+
+      return created;
     });
 
     const p = row.profile!;

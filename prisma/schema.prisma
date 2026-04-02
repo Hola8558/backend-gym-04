@@ -18,6 +18,8 @@ enum UserRole {
 enum AccountType {
   gym
   coach
+  studio
+  enterprise
 
   @@map("account_type")
 }
@@ -55,6 +57,7 @@ model Account {
   createdAt DateTime      @map("created_at")
   status    GenericStatus @map("status")
 
+  accountDetail      AccountDetail?
   users                 User[]
   membershipTypes       MembershipType[]
   routines              Routine[]
@@ -62,6 +65,16 @@ model Account {
   customerMemberships   CustomerMembership[]
 
   @@map("accounts")
+}
+
+model AccountDetail {
+  idAccountDetail Int @id @default(autoincrement()) @map("id_account_detail")
+  idAccount        Int @unique @map("id_account")
+  customersLimit   Int @map("customers_limit")
+
+  account Account @relation(fields: [idAccount], references: [idAccount], onDelete: Cascade)
+
+  @@map("account_details")
 }
 
 model User {
@@ -87,14 +100,15 @@ model User {
 }
 
 model Profile {
-  idUser          Int           @id @map("id_user")
-  idCoach         Int?          @map("id_coach")
-  name            String?       @map("name")
-  lastName        String?       @map("last_name")
-  phone           String?       @map("phone")
-  emergencyPhone  String?       @map("emergency_phone")
-  createdAt       DateTime      @map("created_at")
-  status          GenericStatus @map("status")
+  idUser              Int           @id @map("id_user")
+  idCoach             Int?          @map("id_coach")
+  name                String?       @map("name")
+  lastName            String?       @map("last_name")
+  phone               String?       @map("phone")
+  emergencyPhone      String?       @map("emergency_phone")
+  timeSessionAlive    Int           @default(7) @map("time_session_alive")
+  createdAt           DateTime      @map("created_at")
+  status              GenericStatus @map("status")
 
   user  User  @relation(fields: [idUser], references: [idUser])
   coach User? @relation("ProfileCoach", fields: [idCoach], references: [idUser])
