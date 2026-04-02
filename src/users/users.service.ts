@@ -62,18 +62,21 @@ export class UsersService {
     }
   }
 
-  async createUserWithProfile(dto: CreateUserDto): Promise<CreateUserResponse> {
+  async createUserWithProfile(
+    dto: CreateUserDto,
+    id_account: number,
+  ): Promise<CreateUserResponse> {
     const branch = dto.branch ?? 'A';
     const userNumber = generateUserNumber();
     const now = new Date();
     const passwordHash = await bcrypt.hash(dto.password, 10);
 
     const row = await this.prisma.$transaction(async (tx) => {
-      await this.checkAccountCapacity(dto.id_account, tx);
+      await this.checkAccountCapacity(id_account, tx);
 
       const created = await tx.user.create({
         data: {
-          idAccount: dto.id_account,
+          idAccount: id_account,
           branch,
           userNumber,
           email: dto.email,

@@ -1,4 +1,6 @@
 import { Body, Controller, Get, Post } from '@nestjs/common';
+import { CurrentUser } from '../auth/current-user.decorator';
+import type { JwtPayload } from '../auth/jwt.strategy';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UsersService } from './users.service';
 
@@ -12,7 +14,7 @@ export class UsersController {
   }
 
   @Post()
-  create(@Body() dto: CreateUserDto) {
-    return this.usersService.createUserWithProfile(dto);
+  create(@CurrentUser() user: JwtPayload, @Body() dto: CreateUserDto) {
+    return this.usersService.createUserWithProfile(dto, user.id_account);
   }
 }
