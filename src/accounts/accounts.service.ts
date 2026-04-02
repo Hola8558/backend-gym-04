@@ -32,19 +32,29 @@ function deriveFirstUserRole(accountType: AccountType): UserRole {
     : UserRole.owner;
 }
 
+function hiddenEmail(email: string | null): string | null {
+  if (email == null || email === '') {
+    return email;
+  }
+  const at = email.indexOf('@');
+  if (at <= 0) {
+    return email;
+  }
+  const local = email.slice(0, at);
+  const domain = email.slice(at + 1);
+  if (domain === '') {
+    return email;
+  }
+  const first2 = local.slice(0, 2);
+  const lastBeforeAt = local.slice(-1);
+  return `${first2}*******${lastBeforeAt}@${domain}`;
+}
+
 export type CreateAccountResponse = {
-  id_account: number;
   name: string | null;
   type: AccountType;
-  status: GenericStatus;
-  created_at: Date;
-  id_user: number;
   email: string | null;
-  role: UserRole;
-  branch: string | null;
-  user_number: string | null;
-  user_status: GenericStatus;
-  user_created_at: Date;
+
 };
 
 @Injectable()
@@ -119,18 +129,9 @@ export class AccountsService {
       }
 
       return {
-        id_account: account.idAccount,
         name: account.name,
         type: account.type,
-        status: account.status,
-        created_at: account.createdAt,
-        id_user: user.idUser,
-        email: user.email,
-        role: user.role,
-        branch: user.branch,
-        user_number: user.userNumber,
-        user_status: user.status,
-        user_created_at: user.createdAt,
+        email: hiddenEmail(user.email),
       };
     });
   }

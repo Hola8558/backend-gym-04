@@ -18,15 +18,28 @@ function generateUserNumber(): string {
   return out;
 }
 
+/** Masks local part: first 2 chars + 7 asterisks + last char before @ (e.g. cu*******1@gmail.com). */
+function hiddenEmail(email: string | null): string | null {
+  if (email == null || email === '') {
+    return email;
+  }
+  const at = email.indexOf('@');
+  if (at <= 0) {
+    return email;
+  }
+  const local = email.slice(0, at);
+  const domain = email.slice(at + 1);
+  if (domain === '') {
+    return email;
+  }
+  const first2 = local.slice(0, 2);
+  const lastBeforeAt = local.slice(-1);
+  return `${first2}*******${lastBeforeAt}@${domain}`;
+}
+
 export type CreateUserResponse = {
-  id_user: number;
-  id_account: number;
-  branch: string | null;
   user_number: string | null;
   email: string | null;
-  role: UserRole;
-  status: GenericStatus;
-  created_at: Date;
   name: string | null;
   last_name: string | null;
   phone: string | null;
@@ -123,14 +136,8 @@ export class UsersService {
     const p = row.profile!;
 
     return {
-      id_user: row.idUser,
-      id_account: row.idAccount,
-      branch: row.branch,
       user_number: row.userNumber,
-      email: row.email,
-      role: row.role,
-      status: row.status,
-      created_at: row.createdAt,
+      email: hiddenEmail(row.email),
       name: p.name,
       last_name: p.lastName,
       phone: p.phone,
