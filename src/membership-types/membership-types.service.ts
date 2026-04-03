@@ -5,24 +5,28 @@ import {
 } from '@nestjs/common';
 import { GenericStatus, MembershipType, Prisma } from '@prisma/client';
 import { PrismaClientKnownRequestError } from '@prisma/client/runtime/library';
+import { plainToInstance } from 'class-transformer';
 import { PrismaService } from '../core/prisma/prisma.service';
 import { CreateMembershipTypeDto } from './dto/create-membership-type.dto';
+import { MembershipTypeResponseDto } from './dto/membership-type-response.dto';
 import { UpdateMembershipTypeDto } from './dto/update-membership-type.dto';
 
 @Injectable()
 export class MembershipTypesService {
   constructor(private readonly prisma: PrismaService) {}
 
-  private toResponse(row: MembershipType) {
-    return {
-      id_account: row.idAccount,
-      id_membership_type: row.idMembershipType,
-      name: row.name,
-      duration_days: row.durationDays,
-      price: row.price.toString(),
-      created_at: row.createdAt,
-      status: row.status,
-    };
+  private toResponse(row: MembershipType): MembershipTypeResponseDto {
+    return plainToInstance(
+      MembershipTypeResponseDto,
+      {
+        id_membership_type: row.idMembershipType,
+        name: row.name,
+        duration_days: row.durationDays,
+        price: row.price.toString(),
+        status: row.status,
+      },
+      { excludeExtraneousValues: true },
+    );
   }
 
   private resolveListStatusFilter(statusParam?: string): GenericStatus | null {

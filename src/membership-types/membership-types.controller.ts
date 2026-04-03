@@ -9,17 +9,28 @@ import {
   Post,
   Query,
 } from '@nestjs/common';
+import {
+  ApiBearerAuth,
+  ApiOperation,
+  ApiResponse,
+  ApiTags,
+} from '@nestjs/swagger';
 import { CurrentUser } from '../auth/current-user.decorator';
 import type { JwtPayload } from '../auth/jwt.strategy';
 import { CreateMembershipTypeDto } from './dto/create-membership-type.dto';
+import { MembershipTypeResponseDto } from './dto/membership-type-response.dto';
 import { UpdateMembershipTypeDto } from './dto/update-membership-type.dto';
 import { MembershipTypesService } from './membership-types.service';
 
+@ApiTags('membership-types')
+@ApiBearerAuth()
 @Controller('membership-types')
 export class MembershipTypesController {
   constructor(private readonly membershipTypesService: MembershipTypesService) {}
 
   @Post()
+  @ApiOperation({ summary: 'Create a membership plan' })
+  @ApiResponse({ status: 201, type: MembershipTypeResponseDto })
   create(
     @CurrentUser() user: JwtPayload,
     @Body() dto: CreateMembershipTypeDto,
@@ -28,6 +39,8 @@ export class MembershipTypesController {
   }
 
   @Get()
+  @ApiOperation({ summary: 'List membership plans for current account' })
+  @ApiResponse({ status: 200, type: MembershipTypeResponseDto, isArray: true })
   findAll(
     @CurrentUser() user: JwtPayload,
     @Query('status') status?: string,
@@ -36,6 +49,9 @@ export class MembershipTypesController {
   }
 
   @Patch(':id')
+  @ApiOperation({ summary: 'Update a membership plan' })
+  @ApiResponse({ status: 200, type: MembershipTypeResponseDto })
+  @ApiResponse({ status: 404, description: 'Not found' })
   update(
     @CurrentUser() user: JwtPayload,
     @Param('id', ParseIntPipe) idMembershipType: number,
@@ -49,6 +65,9 @@ export class MembershipTypesController {
   }
 
   @Delete(':id')
+  @ApiOperation({ summary: 'Soft-delete a membership plan' })
+  @ApiResponse({ status: 200, type: MembershipTypeResponseDto })
+  @ApiResponse({ status: 404, description: 'Not found' })
   remove(
     @CurrentUser() user: JwtPayload,
     @Param('id', ParseIntPipe) idMembershipType: number,
