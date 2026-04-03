@@ -6,6 +6,7 @@ import { AccountsModule } from './accounts/accounts.module';
 import { CoachesModule } from './coaches/coaches.module';
 import { CustomerMembershipsModule } from './customer-memberships/customer-memberships.module';
 import { CustomersModule } from './customers/customers.module';
+import { ExercisesModule } from './exercises/exercises.module';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { AuthModule } from './auth/auth.module';
@@ -25,6 +26,7 @@ import { UsersModule } from './users/users.module';
     UsersModule,
     CoachesModule,
     CustomersModule,
+    ExercisesModule,
     ProfilesModule,
     MembershipTypesModule,
     CustomerMembershipsModule,
