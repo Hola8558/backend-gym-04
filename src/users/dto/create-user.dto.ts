@@ -1,4 +1,5 @@
 import { UserRole } from '@prisma/client';
+import { IsCommonEmailDomain } from '../../common/decorators/is-common-email-domain.decorator';
 import {
   IsEmail,
   IsEnum,
@@ -8,8 +9,8 @@ import {
 } from 'class-validator';
 
 export class CreateUserDto {
-
   @IsEmail()
+  @IsCommonEmailDomain()
   email: string;
 
   @IsString()

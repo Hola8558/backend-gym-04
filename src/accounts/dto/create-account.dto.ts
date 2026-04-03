@@ -1,4 +1,5 @@
 import { AccountType } from '@prisma/client';
+import { IsCommonEmailDomain } from '../../common/decorators/is-common-email-domain.decorator';
 import { IsEmail, IsEnum, IsOptional, IsString, MinLength } from 'class-validator';
 
 export class CreateAccountDto {
@@ -10,6 +11,7 @@ export class CreateAccountDto {
   type: AccountType;
 
   @IsEmail()
+  @IsCommonEmailDomain()
   email: string;
 
   @IsString()

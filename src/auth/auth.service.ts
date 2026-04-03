@@ -19,7 +19,7 @@ export class AuthService {
   async login(dto: LoginDto): Promise<{ access_token: string }> {
     const user = await this.prisma.user.findFirst({
       where: {
-        email: dto.email,
+        OR: [{ email: dto.identifier }, { userNumber: dto.identifier }],
         status: GenericStatus.active,
       },
       include: { profile: true, account: true },
