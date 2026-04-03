@@ -119,11 +119,11 @@ model Profile {
 model MembershipType {
   idAccount        Int             @map("id_account")
   idMembershipType Int             @map("id_membership_type")
-  name             String?         @map("name")
-  durationDays     Int?            @map("duration_days")
-  price            Decimal?        @map("price") @db.Decimal(12, 2)
+  name             String          @map("name")
+  durationDays     Int             @map("duration_days")
+  price            Decimal         @map("price") @db.Decimal(12, 2)
   createdAt        DateTime        @map("created_at")
-  status           GenericStatus   @map("status")
+  status           GenericStatus   @default(active) @map("status")
 
   account               Account                @relation(fields: [idAccount], references: [idAccount])
   customerMemberships   CustomerMembership[]

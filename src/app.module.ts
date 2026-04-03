@@ -9,6 +9,7 @@ import { AppService } from './app.service';
 import { AuthModule } from './auth/auth.module';
 import { JwtAuthGuard } from './auth/jwt-auth.guard';
 import { PrismaModule } from './core/prisma/prisma.module';
+import { MembershipTypesModule } from './membership-types/membership-types.module';
 import { ProfilesModule } from './profiles/profiles.module';
 import { UsersModule } from './users/users.module';
 
@@ -21,6 +22,7 @@ import { UsersModule } from './users/users.module';
     CoachesModule,
     CustomersModule,
     ProfilesModule,
+    MembershipTypesModule,
     AuthModule,
   ],
   controllers: [AppController],
