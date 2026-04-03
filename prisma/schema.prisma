@@ -63,6 +63,7 @@ model Account {
   routines              Routine[]
   exerciseFavs          ExerciseFav[]
   customerMemberships   CustomerMembership[]
+  entryLogs             EntryLog[]
 
   @@map("accounts")
 }
@@ -189,14 +190,15 @@ model ExerciseFav {
 }
 
 model EntryLog {
-  idUser      Int           @map("id_user")
-  idEntryLog  Int           @default(autoincrement()) @map("id_entry_log")
-  entryDate   DateTime      @map("entry_date")
-  status      GenericStatus @map("status")
+  idEntryLog Int           @id @default(autoincrement()) @map("id_entry_log")
+  idUser     Int           @map("id_user")
+  idAccount  Int           @map("id_account")
+  entryDate  DateTime      @default(now()) @map("entry_date")
+  status     GenericStatus @default(active) @map("status")
 
-  user User @relation(fields: [idUser], references: [idUser])
+  user    User    @relation(fields: [idUser], references: [idUser])
+  account Account @relation(fields: [idAccount], references: [idAccount])
 
-  @@id([idUser, idEntryLog])
   @@map("entry_logs")
 }
 
