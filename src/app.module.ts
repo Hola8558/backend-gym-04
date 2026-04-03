@@ -4,6 +4,7 @@ import { APP_GUARD } from '@nestjs/core';
 import { ScheduleModule } from '@nestjs/schedule';
 import { AccountsModule } from './accounts/accounts.module';
 import { CoachesModule } from './coaches/coaches.module';
+import { CustomerMembershipsModule } from './customer-memberships/customer-memberships.module';
 import { CustomersModule } from './customers/customers.module';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
@@ -26,6 +27,7 @@ import { UsersModule } from './users/users.module';
     CustomersModule,
     ProfilesModule,
     MembershipTypesModule,
+    CustomerMembershipsModule,
     AuthModule,
     TasksModule,
   ],

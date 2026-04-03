@@ -4,8 +4,9 @@ import {
   UnauthorizedException,
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
-import { GenericStatus } from '@prisma/client';
+import { GenericStatus, User, UserRole } from '@prisma/client';
 import * as bcrypt from 'bcrypt';
+import { startOfUtcDay } from '../common/utils/utc-date.util';
 import { PrismaService } from '../core/prisma/prisma.service';
 import { LoginDto } from './dto/login.dto';
 
@@ -44,6 +45,8 @@ export class AuthService {
       throw new ForbiddenException('Account invalid');
     }
 
+    await this.assertCustomerActiveMembershipForLogin(user);
+
     const days = user.profile?.timeSessionAlive ?? 7;
     const payload = {
       sub: user.idUser,
@@ -56,5 +59,29 @@ export class AuthService {
     });
 
     return { access_token };
+  }
+
+  /**
+   * Customers must have at least one non-expired active membership (turnstile).
+   */
+  private async assertCustomerActiveMembershipForLogin(user: User): Promise<void> {
+    if (user.role !== UserRole.customer) {
+      return;
+    }
+
+    const today = startOfUtcDay(new Date());
+    const active = await this.prisma.customerMembership.findFirst({
+      where: {
+        idUser: user.idUser,
+        status: GenericStatus.active,
+        OR: [{ endDate: null }, { endDate: { gte: today } }],
+      },
+    });
+
+    if (!active) {
+      throw new ForbiddenException(
+        'Access Denied: You do not have an active membership. Please contact your gym owner.',
+      );
+    }
   }
 }
