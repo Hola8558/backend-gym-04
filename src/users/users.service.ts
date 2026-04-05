@@ -5,6 +5,7 @@ import {
 } from '@nestjs/common';
 import { GenericStatus, Prisma, UserRole } from '@prisma/client';
 import * as bcrypt from 'bcrypt';
+import { ROLE_FEATURE_MAP } from '../common/constants/role-features.constant';
 import { PrismaService } from '../core/prisma/prisma.service';
 import { CreateUserDto } from './dto/create-user.dto';
 
@@ -50,6 +51,36 @@ export type CreateUserResponse = {
 export class UsersService {
   constructor(private readonly prisma: PrismaService) {}
 
+  private async buildFeatureFlagCreates(
+    role: UserRole,
+    tx: Prisma.TransactionClient,
+  ): Promise<Prisma.FeatureFlagCreateWithoutUserInput[]> {
+    const allowedFeatureNames = ROLE_FEATURE_MAP[role] ?? [];
+    if (allowedFeatureNames.length === 0) {
+      return [];
+    }
+
+    const features = await tx.feature.findMany({
+      where: {
+        name: { in: allowedFeatureNames },
+        status: GenericStatus.active,
+      },
+      select: {
+        idFeature: true,
+        customizable: true,
+      },
+    });
+
+    return features.map((feature) => ({
+      status: feature.customizable
+        ? GenericStatus.inactive
+        : GenericStatus.active,
+      feature: {
+        connect: { idFeature: feature.idFeature },
+      },
+    }));
+  }
+
   private async checkAccountCapacity(
     id_account: number,
     tx: Prisma.TransactionClient,
@@ -86,6 +117,7 @@ export class UsersService {
 
     const row = await this.prisma.$transaction(async (tx) => {
       await this.checkAccountCapacity(id_account, tx);
+      const featureFlagCreates = await this.buildFeatureFlagCreates(dto.role, tx);
 
       const created = await tx.user.create({
         data: {
@@ -108,27 +140,15 @@ export class UsersService {
               createdAt: now,
             },
           },
+          featureFlags:
+            featureFlagCreates.length > 0
+              ? {
+                  create: featureFlagCreates,
+                }
+              : undefined,
         },
         include: { profile: true },
       });
-
-      const defaultFeatures = await tx.feature.findMany({
-        where: {
-          role: created.role,
-          customizable: false,
-          status: GenericStatus.active,
-        },
-      });
-
-      if (defaultFeatures.length > 0) {
-        await tx.featureFlag.createMany({
-          data: defaultFeatures.map((f) => ({
-            idUser: created.idUser,
-            idFeature: f.idFeature,
-            status: GenericStatus.active,
-          })),
-        });
-      }
 
       return created;
     });
