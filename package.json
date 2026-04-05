@@ -20,7 +20,8 @@
     "test:e2e": "jest --config ./test/jest-e2e.json",
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev",
-    "cron:expire-memberships": "node scripts/expire-memberships-once.cjs"
+    "cron:expire-memberships": "node scripts/expire-memberships-once.cjs",
+    "db:update-feature-descriptions": "ts-node prisma/update-feature-descriptions.ts"
   },
   "dependencies": {
     "@nestjs/common": "^10.0.0",

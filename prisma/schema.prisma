@@ -203,6 +203,7 @@ model Feature {
   idFeature       Int           @id @default(autoincrement()) @map("id_feature")
   idFeatureParent Int?          @map("id_feature_parent")
   name            String?       @map("name")
+  description     Json?         @map("description")
   role            UserRole      @map("role")
   customizable    Boolean       @map("customizable")
   createdAt       DateTime      @map("created_at")
