@@ -85,7 +85,7 @@ model User {
   email        String?       @unique @map("email")
   passwordHash String?       @map("password_hash")
   role         UserRole      @map("role")
-  createdAt    DateTime      @map("created_at")
+  editAt       DateTime      @default(now()) @updatedAt @map("edit_at")
   status       GenericStatus @map("status")
 
   account             Account              @relation(fields: [idAccount], references: [idAccount])

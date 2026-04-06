@@ -1,43 +1,35 @@
 import { GenericStatus, PrismaClient } from '@prisma/client';
-import { ROLE_FEATURE_MAP } from '../src/common/constants/role-features.constant';
 
 const prisma = new PrismaClient();
 
 async function main() {
   console.log('Starting role-based feature sync...');
 
-  const featureNames = [...new Set(Object.values(ROLE_FEATURE_MAP).flat())];
   const masterFeatures = await prisma.feature.findMany({
     where: {
-      name: { in: featureNames },
       status: GenericStatus.active,
     },
     select: {
       idFeature: true,
       name: true,
+      role: true,
       customizable: true,
     },
   });
 
-  const featureMap = new Map(
-    masterFeatures
-      .filter(
-        (
-          feature,
-        ): feature is {
-          idFeature: number;
-          name: string;
-          customizable: boolean;
-        } => Boolean(feature.name),
-      )
-      .map((feature) => [feature.name, feature]),
+  const featuresByRole = new Map(
+    Object.entries(
+      masterFeatures.reduce<Record<string, typeof masterFeatures>>(
+        (acc, feature) => {
+          const key = feature.role;
+          acc[key] ??= [];
+          acc[key].push(feature);
+          return acc;
+        },
+        {},
+      ),
+    ),
   );
-
-  for (const featureName of featureNames) {
-    if (!featureMap.has(featureName)) {
-      console.warn(`Missing master feature in DB: ${featureName}`);
-    }
-  }
 
   const users = await prisma.user.findMany({
     where: { status: GenericStatus.active },
@@ -54,21 +46,13 @@ async function main() {
 
   for (const user of users) {
     processedUsers += 1;
-    const allowedFeatureNames = ROLE_FEATURE_MAP[user.role] ?? [];
+    const allowedFeatures = featuresByRole.get(user.role) ?? [];
 
     console.log(
       `Syncing user ${user.idUser} (account ${user.idAccount}, role ${user.role})...`,
     );
 
-    for (const featureName of allowedFeatureNames) {
-      const feature = featureMap.get(featureName);
-      if (!feature) {
-        console.warn(
-          `Skipping user ${user.idUser}: feature "${featureName}" does not exist`,
-        );
-        continue;
-      }
-
+    for (const feature of allowedFeatures) {
       try {
         await prisma.featureFlag.upsert({
           where: {
@@ -89,11 +73,11 @@ async function main() {
 
         createdOrVerifiedFlags += 1;
         console.log(
-          `  OK -> ${featureName} (${feature.customizable ? 'inactive' : 'active'})`,
+          `  OK -> ${feature.name ?? `feature#${feature.idFeature}`} (${feature.customizable ? 'inactive' : 'active'})`,
         );
       } catch (error) {
         console.error(
-          `  ERROR -> user ${user.idUser}, feature ${featureName}:`,
+          `  ERROR -> user ${user.idUser}, feature ${feature.name ?? `feature#${feature.idFeature}`}:`,
           error,
         );
       }

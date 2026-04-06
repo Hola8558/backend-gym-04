@@ -19,7 +19,7 @@ const userPublicSelect = {
   userNumber: true,
   email: true,
   role: true,
-  createdAt: true,
+  editAt: true,
   status: true,
   profile: true,
 } as const satisfies Prisma.UserSelect;

@@ -1,8 +1,9 @@
 import { Module } from '@nestjs/common';
 import { EntryLogsCronService } from './entry-logs-cron.service';
 import { MembershipCronService } from './membership-cron.service';
+import { UsersCronService } from './users-cron.service';
 
 @Module({
-  providers: [MembershipCronService, EntryLogsCronService],
+  providers: [MembershipCronService, EntryLogsCronService, UsersCronService],
 })
 export class TasksModule {}

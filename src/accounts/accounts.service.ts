@@ -91,7 +91,6 @@ export class AccountsService {
               passwordHash,
               role,
               status: GenericStatus.active,
-              createdAt: now,
               profile: {
                 create: {
                   name: dto.name,

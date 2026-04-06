@@ -5,7 +5,6 @@ import {
 } from '@nestjs/common';
 import { GenericStatus, Prisma, UserRole } from '@prisma/client';
 import * as bcrypt from 'bcrypt';
-import { ROLE_FEATURE_MAP } from '../common/constants/role-features.constant';
 import { PrismaService } from '../core/prisma/prisma.service';
 import { CreateUserDto } from './dto/create-user.dto';
 
@@ -55,14 +54,9 @@ export class UsersService {
     role: UserRole,
     tx: Prisma.TransactionClient,
   ): Promise<Prisma.FeatureFlagCreateWithoutUserInput[]> {
-    const allowedFeatureNames = ROLE_FEATURE_MAP[role] ?? [];
-    if (allowedFeatureNames.length === 0) {
-      return [];
-    }
-
     const features = await tx.feature.findMany({
       where: {
-        name: { in: allowedFeatureNames },
+        role,
         status: GenericStatus.active,
       },
       select: {
@@ -70,6 +64,10 @@ export class UsersService {
         customizable: true,
       },
     });
+
+    if (features.length === 0) {
+      return [];
+    }
 
     return features.map((feature) => ({
       status: feature.customizable
@@ -121,14 +119,15 @@ export class UsersService {
 
       const created = await tx.user.create({
         data: {
-          idAccount: id_account,
+          account: {
+            connect: { idAccount: id_account },
+          },
           branch,
           userNumber,
           email: dto.email,
           passwordHash,
           role: dto.role,
           status: GenericStatus.active,
-          createdAt: now,
           profile: {
             create: {
               name: dto.name,
