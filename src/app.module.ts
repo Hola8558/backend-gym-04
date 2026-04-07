@@ -3,6 +3,7 @@ import { ConfigModule } from '@nestjs/config';
 import { APP_GUARD } from '@nestjs/core';
 import { ScheduleModule } from '@nestjs/schedule';
 import { AccountsModule } from './accounts/accounts.module';
+import { ActivityLogsModule } from './activity-logs/activity-logs.module';
 import { CoachesModule } from './coaches/coaches.module';
 import { CustomerMembershipsModule } from './customer-memberships/customer-memberships.module';
 import { CustomersModule } from './customers/customers.module';
@@ -22,6 +23,7 @@ import { UsersModule } from './users/users.module';
     ConfigModule.forRoot({ isGlobal: true }),
     ScheduleModule.forRoot(),
     PrismaModule,
+    ActivityLogsModule,
     AccountsModule,
     UsersModule,
     CoachesModule,

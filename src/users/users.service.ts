@@ -5,6 +5,7 @@ import {
 } from '@nestjs/common';
 import { GenericStatus, Prisma, UserRole } from '@prisma/client';
 import * as bcrypt from 'bcrypt';
+import { ActivityLogsService } from '../activity-logs/activity-logs.service';
 import { PrismaService } from '../core/prisma/prisma.service';
 import { CreateUserDto } from './dto/create-user.dto';
 
@@ -48,7 +49,10 @@ export type CreateUserResponse = {
 
 @Injectable()
 export class UsersService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly activityLogsService: ActivityLogsService,
+  ) {}
 
   private async buildFeatureFlagCreates(
     role: UserRole,
@@ -107,6 +111,7 @@ export class UsersService {
   async createUserWithProfile(
     dto: CreateUserDto,
     id_account: number,
+    current_user_id?: number,
   ): Promise<CreateUserResponse> {
     const branch = dto.branch ?? 'A';
     const userNumber = generateUserNumber();
@@ -151,6 +156,20 @@ export class UsersService {
 
       return created;
     });
+
+    if (dto.role === UserRole.customer && current_user_id !== undefined) {
+      await this.activityLogsService.logAction(
+        id_account,
+        current_user_id,
+        'CREATE',
+        'CUSTOMER',
+        row.idUser,
+        {
+          name: row.profile?.name ?? null,
+          email: row.email ?? null,
+        },
+      );
+    }
 
     const p = row.profile!;
 

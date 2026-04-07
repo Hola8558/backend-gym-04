@@ -15,6 +15,6 @@ export class UsersController {
 
   @Post()
   create(@CurrentUser() user: JwtPayload, @Body() dto: CreateUserDto) {
-    return this.usersService.createUserWithProfile(dto, user.id_account);
+    return this.usersService.createUserWithProfile(dto, user.id_account, user.sub);
   }
 }

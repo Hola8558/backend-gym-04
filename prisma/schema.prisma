@@ -58,11 +58,12 @@ model Account {
   status    GenericStatus @map("status")
 
   accountDetail      AccountDetail?
-  users                 User[]
-  membershipTypes       MembershipType[]
-  routines              Routine[]
-  exerciseFavs          ExerciseFav[]
-  customerMemberships   CustomerMembership[]
+  users               User[]
+  membershipTypes     MembershipType[]
+  routines            Routine[]
+  exerciseFavs        ExerciseFav[]
+  customerMemberships CustomerMembership[]
+  activityLogs        ActivityLog[]
 
   @@map("accounts")
 }
@@ -95,6 +96,7 @@ model User {
   entryLogs           EntryLog[]
   featureFlags        FeatureFlag[]
   coachedProfiles     Profile[]            @relation("ProfileCoach")
+  activityLogs        ActivityLog[]
 
   @@map("users")
 }
@@ -197,6 +199,23 @@ model EntryLog {
   user    User    @relation(fields: [idUser], references: [idUser])
 
   @@map("entry_logs")
+}
+
+model ActivityLog {
+  id_log      Int      @id @default(autoincrement())
+  id_account  Int
+  id_user     Int
+  action      String   // "CREATE", "UPDATE", "DELETE", etc.
+  entity      String   // "CUSTOMER", "MEMBERSHIP", "FEATURE", etc.
+  entity_id   Int?
+  metadata    Json?
+  created_at  DateTime @default(now())
+
+  account Account @relation(fields: [id_account], references: [idAccount], onDelete: Cascade)
+  user    User    @relation(fields: [id_user], references: [idUser], onDelete: Cascade)
+
+  @@index([id_account, created_at])
+  @@index([id_account, action, entity])
 }
 
 model Feature {

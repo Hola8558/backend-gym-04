@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { GenericStatus, Prisma, UserRole } from '@prisma/client';
+import { ActivityLogsService } from '../activity-logs/activity-logs.service';
 import { PrismaService } from '../core/prisma/prisma.service';
 import { UpdateUserDto } from './dto/update-user.dto';
 
@@ -26,7 +27,10 @@ const userPublicSelect = {
 
 @Injectable()
 export class SharedUsersService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly activityLogsService: ActivityLogsService,
+  ) {}
 
   findManyByRole(id_account: number, role: UserRole) {
     return this.prisma.user.findMany({
@@ -106,6 +110,7 @@ export class SharedUsersService {
     id_user: number,
     id_account: number,
     role: UserRole,
+    actor_user_id?: number,
   ): Promise<boolean> {
     const row = await this.prisma.user.findFirst({
       where: {
@@ -132,6 +137,20 @@ export class SharedUsersService {
         });
       }
     });
+
+    if (role === UserRole.customer && actor_user_id !== undefined) {
+      await this.activityLogsService.logAction(
+        id_account,
+        actor_user_id,
+        'DELETE',
+        'CUSTOMER',
+        row.idUser,
+        {
+          previous_status: row.status,
+          new_status: GenericStatus.deleted,
+        },
+      );
+    }
 
     return true;
   }
