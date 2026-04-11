@@ -45,10 +45,6 @@ export class UsersCronService {
         where: { idUser: { in: userIds } },
       });
 
-      await tx.routine.deleteMany({
-        where: { idUser: { in: userIds } },
-      });
-
       await tx.customerMembership.deleteMany({
         where: { idUser: { in: userIds } },
       });

@@ -1,4 +1,5 @@
 import { Body, Controller, Get, Post } from '@nestjs/common';
+import { UserRole } from '@prisma/client';
 import { CurrentUser } from '../auth/current-user.decorator';
 import type { JwtPayload } from '../auth/jwt.strategy';
 import { CreateUserDto } from './dto/create-user.dto';
@@ -15,6 +16,13 @@ export class UsersController {
 
   @Post()
   create(@CurrentUser() user: JwtPayload, @Body() dto: CreateUserDto) {
-    return this.usersService.createUserWithProfile(dto, user.id_account, user.sub);
+    return this.usersService.createUserWithProfile(
+      {
+        ...dto,
+        role: UserRole.customer,
+      },
+      user.id_account,
+      user.sub,
+    );
   }
 }

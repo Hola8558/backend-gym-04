@@ -1,0 +1,24 @@
+import { Type } from 'class-transformer';
+import {
+  IsInt,
+  IsNumber,
+  IsString,
+  Min,
+  MinLength,
+} from 'class-validator';
+
+export class CreateMembershipTypeDto {
+  @IsString()
+  @MinLength(1)
+  name: string;
+
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  duration_days: number;
+
+  @Type(() => Number)
+  @IsNumber({ maxDecimalPlaces: 2 })
+  @Min(0)
+  price: number;
+}

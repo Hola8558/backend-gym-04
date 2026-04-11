@@ -153,16 +153,16 @@ model CustomerMembership {
 }
 
 model Routine {
-  idRoutine  Int           @id @default(autoincrement()) @map("id_routine")
-  idAccount  Int           @map("id_account")
-  idUser     Int           @map("id_user")
-  name       String?       @map("name")
-  data       Json          @map("data")
-  createdAt  DateTime      @map("created_at")
-  status     GenericStatus @map("status")
+  idRoutine Int      @id @default(autoincrement()) @map("id_routine")
+  idAccount Int?     @map("id_account")
+  idUser    Int?     @map("id_user")
+  name      String?  @map("name")
+  data      Json     @map("data")
+  createdAt DateTime @default(now()) @map("created_at")
+  status    GenericStatus @default(active) @map("status")
 
-  account Account @relation(fields: [idAccount], references: [idAccount])
-  user    User    @relation(fields: [idUser], references: [idUser])
+  account Account? @relation(fields: [idAccount], references: [idAccount])
+  user    User?    @relation(fields: [idUser], references: [idUser])
 
   @@map("routines")
 }

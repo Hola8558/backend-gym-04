@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { ConflictException, Injectable } from '@nestjs/common';
 import { GenericStatus, Prisma, UserRole } from '@prisma/client';
 import { ActivityLogsService } from '../activity-logs/activity-logs.service';
 import { PrismaService } from '../core/prisma/prisma.service';
@@ -99,11 +99,25 @@ export class SharedUsersService {
       data.profile = { update: profileUpdate };
     }
 
-    return this.prisma.user.update({
-      where: { idUser: id_user },
-      data,
-      select: userPublicSelect,
-    });
+    try {
+      return await this.prisma.user.update({
+        where: { idUser: id_user },
+        data,
+        select: userPublicSelect,
+      });
+    } catch (error) {
+      if (
+        error instanceof Prisma.PrismaClientKnownRequestError &&
+        error.code === 'P2002' &&
+        String(error.meta?.target ?? '').includes('email')
+      ) {
+        throw new ConflictException(
+          'CUSTOMERS.FORM.ERRORS.EMAIL_ALREADY_EXISTS',
+        );
+      }
+
+      throw error;
+    }
   }
 
   async softDeleteUser(

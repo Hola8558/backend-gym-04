@@ -15,6 +15,7 @@ import { JwtAuthGuard } from './auth/jwt-auth.guard';
 import { PrismaModule } from './core/prisma/prisma.module';
 import { MembershipTypesModule } from './membership-types/membership-types.module';
 import { ProfilesModule } from './profiles/profiles.module';
+import { RoutinesModule } from './routines/routines.module';
 import { TasksModule } from './tasks/tasks.module';
 import { UsersModule } from './users/users.module';
 
@@ -30,6 +31,7 @@ import { UsersModule } from './users/users.module';
     CustomersModule,
     ExercisesModule,
     ProfilesModule,
+    RoutinesModule,
     MembershipTypesModule,
     CustomerMembershipsModule,
     AuthModule,

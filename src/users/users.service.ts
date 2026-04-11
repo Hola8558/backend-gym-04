@@ -1,4 +1,5 @@
 import {
+  ConflictException,
   ForbiddenException,
   Injectable,
   NotFoundException,
@@ -118,68 +119,85 @@ export class UsersService {
     const now = new Date();
     const passwordHash = await bcrypt.hash(dto.password, 10);
 
-    const row = await this.prisma.$transaction(async (tx) => {
-      await this.checkAccountCapacity(id_account, tx);
-      const featureFlagCreates = await this.buildFeatureFlagCreates(dto.role, tx);
+    try {
+      const row = await this.prisma.$transaction(async (tx) => {
+        await this.checkAccountCapacity(id_account, tx);
+        const featureFlagCreates = await this.buildFeatureFlagCreates(
+          dto.role,
+          tx,
+        );
 
-      const created = await tx.user.create({
-        data: {
-          account: {
-            connect: { idAccount: id_account },
-          },
-          branch,
-          userNumber,
-          email: dto.email,
-          passwordHash,
-          role: dto.role,
-          status: GenericStatus.active,
-          profile: {
-            create: {
-              name: dto.name,
-              lastName: dto.last_name,
-              phone: dto.phone ?? null,
-              emergencyPhone: dto.emergency_phone ?? null,
-              timeSessionAlive: 7,
-              status: GenericStatus.active,
-              createdAt: now,
+        const created = await tx.user.create({
+          data: {
+            account: {
+              connect: { idAccount: id_account },
             },
+            branch,
+            userNumber,
+            email: dto.email,
+            passwordHash,
+            role: dto.role,
+            status: GenericStatus.active,
+            profile: {
+              create: {
+                name: dto.name,
+                lastName: dto.last_name,
+                phone: dto.phone ?? null,
+                emergencyPhone: dto.emergency_phone ?? null,
+                timeSessionAlive: 7,
+                status: GenericStatus.active,
+                createdAt: now,
+              },
+            },
+            featureFlags:
+              featureFlagCreates.length > 0
+                ? {
+                    create: featureFlagCreates,
+                  }
+                : undefined,
           },
-          featureFlags:
-            featureFlagCreates.length > 0
-              ? {
-                  create: featureFlagCreates,
-                }
-              : undefined,
-        },
-        include: { profile: true },
+          include: { profile: true },
+        });
+
+        return created;
       });
 
-      return created;
-    });
+      if (dto.role === UserRole.customer && current_user_id !== undefined) {
+        await this.activityLogsService.logAction(
+          id_account,
+          current_user_id,
+          'CREATE',
+          'CUSTOMER',
+          row.idUser,
+          {
+            name: row.profile?.name ?? null,
+            email: row.email ?? null,
+          },
+        );
+      }
 
-    if (dto.role === UserRole.customer && current_user_id !== undefined) {
-      await this.activityLogsService.logAction(
-        id_account,
-        current_user_id,
-        'CREATE',
-        'CUSTOMER',
-        row.idUser,
-        {
-          name: row.profile?.name ?? null,
-          email: row.email ?? null,
-        },
-      );
+      const p = row.profile!;
+
+      return {
+        user_number: row.userNumber,
+        email: hiddenEmail(row.email),
+        name: p.name,
+        last_name: p.lastName,
+        phone: p.phone,
+        emergency_phone: p.emergencyPhone,
+      };
+    } catch (error) {
+      if (
+        error instanceof Prisma.PrismaClientKnownRequestError &&
+        error.code === 'P2002' &&
+        String(error.meta?.target ?? '').includes('email')
+      ) {
+        throw new ConflictException(
+          'CUSTOMERS.FORM.ERRORS.EMAIL_ALREADY_EXISTS',
+        );
+      }
+
+      throw error;
     }
-
-    const p = row.profile!;
-
-    return {
-      user_number: row.userNumber,
-      email: hiddenEmail(row.email),
-      name: p.name,
-      last_name: p.lastName,
-      phone: p.phone,
-      emergency_phone: p.emergencyPhone,
-    };
   }
 }
