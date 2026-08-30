@@ -1,5 +1,4 @@
 import {
-  ConflictException,
   ForbiddenException,
   Inject,
   Injectable,
@@ -7,7 +6,7 @@ import {
   UnauthorizedException,
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
-import { GenericStatus, User, UserRole } from '@prisma/client';
+import { GenericStatus, User, UserRole, AccountType } from '@prisma/client';
 import * as bcrypt from 'bcrypt';
 import { assertStrongPassword } from '../common/utils/assert-strong-password.util';
 import { startOfUtcDay } from '../common/utils/utc-date.util';
@@ -15,8 +14,17 @@ import { PrismaService } from '../core/prisma/prisma.service';
 import { EMAIL_PROVIDER } from '../email/constants/email-provider.token';
 import type { EmailProvider } from '../email/interfaces/email-provider.interface';
 import { PasswordService } from '../password/password.service';
+import { accountRequiresCustomerMembership } from './utils/account-requires-customer-membership.util';
 import { LoginDto } from './dto/login.dto';
+import { ForgotPasswordDto } from './dto/forgot-password.dto';
+import { IdentifyResponseDto } from './dto/identify-response.dto';
+import { findUserForPasswordReset } from './utils/find-user-for-password-reset.util';
 import { generateTempPassword } from './utils/generate-temp-password.util';
+import {
+  assertAccountAllowsLogin,
+  findActiveLoginUser,
+} from './utils/find-active-login-user.util';
+import { toIdentifyResponseDto } from './utils/identify-response.mapper';
 
 @Injectable()
 export class AuthService {
@@ -36,10 +44,7 @@ export class AuthService {
    */
   async login(dto: LoginDto): Promise<{ access_token: string }> {
     const identifier = dto.identifier.trim();
-    const isEmail = identifier.includes('@');
-    const user = isEmail
-      ? await this.findActiveUserByEmail(identifier)
-      : await this.findActiveUserByNumber(identifier);
+    const user = await findActiveLoginUser(this.prisma, identifier);
 
     const invalid = new UnauthorizedException('AUTH.ERRORS.INVALID_CREDENTIALS');
 
@@ -53,17 +58,19 @@ export class AuthService {
     }
 
     const accountStatus = user.account.status;
-    if (
-      accountStatus !== GenericStatus.active &&
-      accountStatus !== GenericStatus.pending
-    ) {
-      throw new ForbiddenException('AUTH.ERRORS.ACCOUNT_INVALID');
-    }
+    assertAccountAllowsLogin(accountStatus);
 
     await this.assertCustomerActiveMembershipForLogin(user);
 
     const access_token = await this.issueAccessTokenForUserId(user.idUser);
     return { access_token };
+  }
+
+  async identify(identifier: string): Promise<IdentifyResponseDto> {
+    const trimmed = identifier.trim();
+    const user = await findActiveLoginUser(this.prisma, trimmed);
+    assertAccountAllowsLogin(user.account.status);
+    return toIdentifyResponseDto(user.requiresPasswordChange, trimmed);
   }
 
   /**
@@ -79,15 +86,10 @@ export class AuthService {
    * Call after resolving an active `UserRole.customer`.
    */
   async assertMobileCustomerEligible(
-    user: User & { account: { status: GenericStatus } },
+    user: User & { account: { status: GenericStatus; type: AccountType } },
   ): Promise<void> {
     const accountStatus = user.account.status;
-    if (
-      accountStatus !== GenericStatus.active &&
-      accountStatus !== GenericStatus.pending
-    ) {
-      throw new ForbiddenException('AUTH.ERRORS.ACCOUNT_INVALID');
-    }
+    assertAccountAllowsLogin(accountStatus);
     await this.assertCustomerActiveMembershipForLogin(user);
   }
 
@@ -95,21 +97,42 @@ export class AuthService {
    * Generates a temporary password, persists it via PasswordService, and emails it.
    * Throws NotFoundException when the identifier does not resolve to a usable user.
    */
-  async resetPassword(identifier: string, language: string): Promise<void> {
-    const trimmed = identifier.trim();
-    const user = await this.findUserForPasswordReset(trimmed);
+  async resetPassword(dto: ForgotPasswordDto): Promise<void> {
+    const searchNumber = dto.userNumber?.trim();
+    const searchIdentifier = dto.identifier?.trim();
+
+    console.log(
+      `--- DIAGNOSTIC 3 (NEST): SEARCHING identifier="${searchIdentifier ?? ''}" userNumber="${searchNumber ?? ''}" ---`,
+    );
+
+    const user = await findUserForPasswordReset(this.prisma, {
+      identifier: searchIdentifier,
+      userNumber: searchNumber,
+    });
 
     if (!user) {
+      console.log(
+        '--- DIAGNOSTIC 4 (NEST): USER NOT FOUND. THROWING SILENT EXCEPTION. ---',
+      );
       throw new NotFoundException('AUTH.ERRORS.USER_NOT_FOUND');
     }
 
+    console.log(`--- DIAGNOSTIC 5 (NEST): USER FOUND = ${user.email} ---`);
+
     const email = user.email?.trim();
     if (!email) {
+      console.log(
+        '--- DIAGNOSTIC 5b (NEST): USER HAS NO EMAIL. THROWING SILENT EXCEPTION. ---',
+      );
       throw new NotFoundException('AUTH.ERRORS.USER_NOT_FOUND');
     }
 
     const userName = this.resolvePasswordResetDisplayName(user);
     const newPasswordPlain = generateTempPassword();
+
+    console.log(
+      `--- DIAGNOSTIC 5c (NEST): UPDATING PASSWORD FOR idUser=${user.idUser}, language=${dto.language} ---`,
+    );
 
     await this.passwordService.updateUserPassword(
       user.idUser,
@@ -118,31 +141,26 @@ export class AuthService {
       { requiresPasswordChange: true },
     );
 
-    await this.emailProvider.sendEmail('PASSWORD_RESET', language, {
+    console.log(
+      `--- DIAGNOSTIC 5d (NEST): CALLING emailProvider.sendEmail for ${email} ---`,
+    );
+
+    await this.emailProvider.sendEmail('PASSWORD_RESET', dto.language, {
       email,
       userName,
       password: newPasswordPlain,
     });
+
+    console.log('--- DIAGNOSTIC 5e (NEST): resetPassword COMPLETED SUCCESSFULLY ---');
   }
 
   async setupPassword(
-    idUser: number,
+    identifier: string,
     newPassword: string,
   ): Promise<{ access_token: string }> {
     const plain = assertStrongPassword(newPassword);
-
-    const user = await this.prisma.user.findUnique({
-      where: { idUser },
-      select: {
-        idUser: true,
-        status: true,
-        requiresPasswordChange: true,
-      },
-    });
-
-    if (!user || user.status !== GenericStatus.active) {
-      throw new UnauthorizedException('AUTH.ERRORS.INVALID_SESSION');
-    }
+    const user = await findActiveLoginUser(this.prisma, identifier);
+    assertAccountAllowsLogin(user.account.status);
 
     if (!user.requiresPasswordChange) {
       throw new ForbiddenException('AUTH.ERRORS.PASSWORD_CHANGE_NOT_REQUIRED');
@@ -151,14 +169,14 @@ export class AuthService {
     const passwordHash = await bcrypt.hash(plain, 10);
 
     await this.prisma.user.update({
-      where: { idUser },
+      where: { idUser: user.idUser },
       data: {
         passwordHash,
         requiresPasswordChange: false,
       },
     });
 
-    const access_token = await this.issueAccessTokenForUserId(idUser);
+    const access_token = await this.issueAccessTokenForUserId(user.idUser);
     return { access_token };
   }
 
@@ -189,46 +207,6 @@ export class AuthService {
     });
   }
 
-  /**
-   * Resolves a non-deleted user by email or userNumber for password reset.
-   * Returns null when not found (caller maps to NotFoundException).
-   */
-  private async findUserForPasswordReset(identifier: string) {
-    const isEmail = identifier.includes('@');
-
-    if (isEmail) {
-      const users = await this.prisma.user.findMany({
-        where: {
-          email: identifier,
-          status: { not: GenericStatus.deleted },
-        },
-        include: { account: true, profile: true },
-      });
-
-      if (users.length === 0) {
-        return null;
-      }
-
-      if (users.length > 1) {
-        const active = users.filter((u) => u.status === GenericStatus.active);
-        if (active.length === 1) {
-          return active[0];
-        }
-        return null;
-      }
-
-      return users[0];
-    }
-
-    return this.prisma.user.findFirst({
-      where: {
-        userNumber: identifier,
-        status: { not: GenericStatus.deleted },
-      },
-      include: { account: true, profile: true },
-    });
-  }
-
   private resolvePasswordResetDisplayName(user: {
     profile: { name: string | null; lastName: string | null } | null;
     account: { name: string | null };
@@ -245,43 +223,23 @@ export class AuthService {
     return user.account.name?.trim() || 'Tlakani';
   }
 
-  private async findActiveUserByNumber(identifier: string) {
-    const user = await this.prisma.user.findUnique({
-      where: { userNumber: identifier },
-      include: { profile: true, account: true },
-    });
-
-    if (!user || user.status !== GenericStatus.active) {
-      throw new UnauthorizedException('AUTH.ERRORS.INVALID_CREDENTIALS');
-    }
-
-    return user;
-  }
-
-  private async findActiveUserByEmail(identifier: string) {
-    const users = await this.prisma.user.findMany({
-      where: { email: identifier },
-      include: { profile: true, account: true },
-    });
-
-    const activeUsers = users.filter((user) => user.status === GenericStatus.active);
-
-    if (activeUsers.length === 0) {
-      throw new UnauthorizedException('AUTH.ERRORS.INVALID_CREDENTIALS');
-    }
-
-    if (activeUsers.length > 1) {
-      throw new ConflictException('AUTH.ERRORS.MULTIPLE_ACTIVE_ACCOUNTS');
-    }
-
-    return activeUsers[0];
-  }
-
   /**
-   * Customers must have at least one non-expired active membership (turnstile).
+   * Customers on gym accounts, or solo coach accounts with membership management (5006),
+   * must have at least one non-expired active membership (turnstile).
    */
-  private async assertCustomerActiveMembershipForLogin(user: User): Promise<void> {
+  private async assertCustomerActiveMembershipForLogin(
+    user: User & { account: { type: AccountType } },
+  ): Promise<void> {
     if (user.role !== UserRole.customer) {
+      return;
+    }
+
+    const requiresMembership = await accountRequiresCustomerMembership(
+      this.prisma,
+      user.idAccount,
+      user.account.type,
+    );
+    if (!requiresMembership) {
       return;
     }
 

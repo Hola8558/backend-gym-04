@@ -6,6 +6,7 @@ import {
 } from '@nestjs/common';
 import { PrismaClientKnownRequestError } from '@prisma/client/runtime/library';
 import { Response } from 'express';
+import { getPrismaTargetFields } from '../prisma/utils/prisma-error-target.util';
 
 function humanizeUniqueTarget(fields: string[]): string {
   if (fields.length === 0) {
@@ -14,6 +15,9 @@ function humanizeUniqueTarget(fields: string[]): string {
   const parts = fields.map((f) => {
     if (f === 'email') {
       return 'email';
+    }
+    if (f === 'idAccount' || f === 'id_account') {
+      return 'gym account';
     }
     if (f === 'userNumber' || f === 'user_number') {
       return 'user number';
@@ -36,12 +40,7 @@ export class PrismaClientExceptionFilter implements ExceptionFilter {
     const response = ctx.getResponse<Response>();
 
     if (exception.code === 'P2002') {
-      const target = exception.meta?.target;
-      const fields = !target
-        ? []
-        : Array.isArray(target)
-          ? target.map(String)
-          : [String(target)];
+      const fields = getPrismaTargetFields(exception.meta?.target);
       const phrase = humanizeUniqueTarget(fields);
       response.status(HttpStatus.CONFLICT).json({
         statusCode: HttpStatus.CONFLICT,

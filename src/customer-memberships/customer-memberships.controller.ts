@@ -1,15 +1,15 @@
 import { Body, Controller, Post, UseGuards } from '@nestjs/common';
-import { UserRole } from '@prisma/client';
 import {
   ApiBearerAuth,
   ApiOperation,
   ApiResponse,
   ApiTags,
 } from '@nestjs/swagger';
+import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { CurrentUser } from '../auth/current-user.decorator';
 import type { JwtPayload } from '../auth/jwt.strategy';
-import { Roles } from '../common/decorators/roles.decorator';
-import { RolesGuard } from '../common/guards/roles.guard';
+import { RequireAccess } from '../common/decorators/require-access.decorator';
+import { AccessGuard } from '../common/guards/access.guard';
 import { CustomerMembershipsService } from './customer-memberships.service';
 import { AssignMembershipDto } from './dto/assign-membership.dto';
 import { CustomerMembershipResponseDto } from './dto/customer-membership-response.dto';
@@ -17,14 +17,14 @@ import { CustomerMembershipResponseDto } from './dto/customer-membership-respons
 @ApiTags('customer-memberships')
 @ApiBearerAuth()
 @Controller('customer-memberships')
-@UseGuards(RolesGuard)
 export class CustomerMembershipsController {
   constructor(
     private readonly customerMembershipsService: CustomerMembershipsService,
   ) {}
 
   @Post('assign')
-  @Roles(UserRole.owner, UserRole.coach)
+  @UseGuards(JwtAuthGuard, AccessGuard)
+  @RequireAccess({ roles: ['owner'], features: ['5006'] })
   @ApiOperation({ summary: 'Assign or renew a customer membership' })
   @ApiResponse({ status: 201, type: CustomerMembershipResponseDto })
   @ApiResponse({ status: 403, description: 'Forbidden' })

@@ -1,0 +1,1 @@
+export const DELETED_RECORD_RETENTION_DAYS = 30;

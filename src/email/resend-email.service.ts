@@ -1,24 +1,20 @@
-import { Injectable, InternalServerErrorException } from '@nestjs/common';
+import {
+  Injectable,
+  InternalServerErrorException,
+  Logger,
+} from '@nestjs/common';
 import { Resend } from 'resend';
 import type { EmailProvider } from './interfaces/email-provider.interface';
 import type { EmailAction } from './types/email-action.type';
+import { buildPasswordResetFallbackHtml } from './utils/build-password-reset-fallback-html.util';
+import { compileEmailTemplate } from './utils/compile-email-template.util';
+import {
+  resolveHostedTemplateId,
+  resolvePasswordResetSubject,
+  resolvePasswordResetTemplateFile,
+} from './utils/resolve-email-template.util';
 
 const DEFAULT_LANGUAGE = 'es';
-
-/**
- * Resend template IDs live ONLY in this adapter.
- * Core services must never reference these string IDs.
- */
-const templateMap: Record<EmailAction, Record<'en' | 'es', string>> = {
-  PASSWORD_RESET: {
-    en: 'password-reset-en',
-    es: 'password-reset-es',
-  },
-  WELCOME_OWNER: {
-    en: 'welcome-email-en',
-    es: 'welcome-email-es',
-  },
-};
 
 /**
  * Isolated Resend adapter. Auth and other core services depend only on EmailProvider.
@@ -26,6 +22,7 @@ const templateMap: Record<EmailAction, Record<'en' | 'es', string>> = {
  */
 @Injectable()
 export class ResendEmailService implements EmailProvider {
+  private readonly logger = new Logger(ResendEmailService.name);
   private readonly resend: Resend;
 
   constructor() {
@@ -41,20 +38,134 @@ export class ResendEmailService implements EmailProvider {
       throw new InternalServerErrorException('AUTH.ERRORS.EMAIL_SEND_FAILED');
     }
 
-    const templateId = this.resolveTemplateId(action, language);
+    const from = this.resolveFromAddress();
+    const normalizedLanguage = this.normalizeLanguage(language);
     const to = this.requireString(data, 'email');
-    const variables = this.mapTemplateVariables(action, data);
+
+    if (action === 'PASSWORD_RESET') {
+      await this.sendPasswordResetEmail(from, to, normalizedLanguage, data);
+      return;
+    }
+
+    await this.sendHostedTemplateEmail(
+      from,
+      to,
+      action,
+      normalizedLanguage,
+      data,
+    );
+  }
+
+  private async sendPasswordResetEmail(
+    from: string,
+    to: string,
+    language: 'en' | 'es',
+    data: Record<string, unknown>,
+  ): Promise<void> {
+    const userName = this.requireString(data, 'userName');
+    const password = this.requirePassword(data, 'password');
+    const subject = resolvePasswordResetSubject(language);
+    const html = this.buildPasswordResetHtml(language, userName, password);
+
+    await this.dispatchEmail({
+      from,
+      to,
+      subject,
+      html,
+    });
+  }
+
+  private buildPasswordResetHtml(
+    language: 'en' | 'es',
+    userName: string,
+    password: string,
+  ): string {
+    try {
+      return compileEmailTemplate(resolvePasswordResetTemplateFile(language), {
+        userName,
+        password,
+      });
+    } catch (error) {
+      const reason =
+        error instanceof Error ? error.message : 'Unknown template error';
+      this.logger.warn(
+        `Password reset template compile failed (${language}), using HTML fallback: ${reason}`,
+      );
+
+      return buildPasswordResetFallbackHtml(language, userName, password);
+    }
+  }
+
+  private async sendHostedTemplateEmail(
+    from: string,
+    to: string,
+    action: EmailAction,
+    language: 'en' | 'es',
+    data: Record<string, unknown>,
+  ): Promise<void> {
+    const templateId = resolveHostedTemplateId(action, language);
+    const variables = this.mapHostedTemplateVariables(action, data);
+
+    await this.dispatchEmail({
+      from,
+      to,
+      template: {
+        id: templateId,
+        variables,
+      },
+    });
+  }
+
+  private async dispatchEmail(
+    payload:
+      | {
+          from: string;
+          to: string;
+          subject: string;
+          html: string;
+        }
+      | {
+          from: string;
+          to: string;
+          template: {
+            id: string;
+            variables: Record<string, string | number>;
+          };
+        },
+  ): Promise<void> {
+    const diagnosticPayload =
+      'html' in payload
+        ? {
+            from: payload.from,
+            to: payload.to,
+            subject: payload.subject,
+            htmlLength: payload.html.length,
+          }
+        : {
+            from: payload.from,
+            to: payload.to,
+            template: payload.template,
+          };
+
+    console.log('--- DIAGNOSTIC 6 (NEST): ATTEMPTING RESEND API CALL ---');
+    console.log(
+      `--- DIAGNOSTIC 6b (NEST): PAYLOAD (sanitized) = ${JSON.stringify(diagnosticPayload)} ---`,
+    );
 
     try {
-      const response = await this.resend.emails.send({
-        to,
-        template: {
-          id: templateId,
-          variables,
-        },
-      });
+      const resendResponse = await this.resend.emails.send(payload);
 
-      if (response.error) {
+      console.log(
+        `--- DIAGNOSTIC 7 (NEST): RESEND SUCCESS = ${JSON.stringify(resendResponse)} ---`,
+      );
+
+      if (resendResponse.error) {
+        console.error(
+          `--- DIAGNOSTIC 7b (NEST): RESEND RETURNED ERROR OBJECT = ${JSON.stringify(resendResponse.error)} ---`,
+        );
+        this.logger.error(
+          `Resend API error: ${resendResponse.error.message ?? 'Unknown error'}`,
+        );
         throw new InternalServerErrorException('AUTH.ERRORS.EMAIL_SEND_FAILED');
       }
     } catch (error) {
@@ -62,28 +173,34 @@ export class ResendEmailService implements EmailProvider {
         throw error;
       }
 
+      const reason = error instanceof Error ? error.message : 'Unknown error';
+      console.error(`--- DIAGNOSTIC 8 (NEST): RESEND FAILED = ${reason} ---`);
+      if (error instanceof Error && error.stack) {
+        console.error(`--- DIAGNOSTIC 8b (NEST): STACK = ${error.stack} ---`);
+      }
+      this.logger.error(`Resend send failed: ${reason}`);
       throw new InternalServerErrorException('AUTH.ERRORS.EMAIL_SEND_FAILED');
     }
   }
 
-  private resolveTemplateId(action: EmailAction, language: string): string {
-    const normalized = language.trim().toLowerCase();
-    const byAction = templateMap[action];
-    return byAction[normalized as 'en' | 'es'] ?? byAction[DEFAULT_LANGUAGE];
+  private resolveFromAddress(): string {
+    const from = process.env.RESEND_FROM_EMAIL?.trim();
+    if (!from) {
+      throw new InternalServerErrorException('AUTH.ERRORS.EMAIL_SEND_FAILED');
+    }
+
+    return from;
   }
 
-  private mapTemplateVariables(
+  private normalizeLanguage(language: string): 'en' | 'es' {
+    const normalized = language.trim().toLowerCase();
+    return normalized === 'en' ? 'en' : DEFAULT_LANGUAGE;
+  }
+
+  private mapHostedTemplateVariables(
     action: EmailAction,
     data: Record<string, unknown>,
   ): Record<string, string | number> {
-    if (action === 'PASSWORD_RESET') {
-      return {
-        email_user: this.requireString(data, 'email'),
-        new_password: this.requirePassword(data, 'password'),
-        user_name: this.requireString(data, 'userName'),
-      };
-    }
-
     if (action === 'WELCOME_OWNER') {
       return {
         email_user: this.requireString(data, 'email'),

@@ -2,6 +2,7 @@ import { Type } from 'class-transformer';
 import {
   IsInt,
   IsNumber,
+  IsOptional,
   IsString,
   Min,
   MinLength,
@@ -21,4 +22,8 @@ export class CreateMembershipTypeDto {
   @IsNumber({ maxDecimalPlaces: 2 })
   @Min(0)
   price: number;
+
+  @IsOptional()
+  @IsString()
+  features?: string;
 }

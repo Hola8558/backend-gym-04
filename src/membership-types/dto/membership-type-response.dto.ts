@@ -23,6 +23,10 @@ export class MembershipTypeResponseDto {
   price: string;
 
   @Expose()
+  @ApiProperty({ required: false, nullable: true })
+  features: string | null;
+
+  @Expose()
   @ApiProperty({ enum: GenericStatus })
   status: GenericStatus;
 }

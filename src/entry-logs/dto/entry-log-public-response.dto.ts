@@ -11,4 +11,10 @@ export class EntryLogPublicResponseDto {
   @Expose()
   @ApiProperty({ enum: GenericStatus })
   status: GenericStatus;
+
+  @Expose()
+  @ApiProperty({
+    description: 'Customer display name for kiosk UI (profile or user number fallback)',
+  })
+  customerName: string;
 }

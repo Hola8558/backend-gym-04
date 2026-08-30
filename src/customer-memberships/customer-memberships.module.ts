@@ -1,10 +1,11 @@
 import { Module } from '@nestjs/common';
+import { MembershipAuditModule } from '../membership-audit/membership-audit.module';
 import { CustomerMembershipsController } from './customer-memberships.controller';
 import { CustomerMembershipsService } from './customer-memberships.service';
-import { RolesGuard } from '../common/guards/roles.guard';
 
 @Module({
+  imports: [MembershipAuditModule],
   controllers: [CustomerMembershipsController],
-  providers: [CustomerMembershipsService, RolesGuard],
+  providers: [CustomerMembershipsService],
 })
 export class CustomerMembershipsModule {}

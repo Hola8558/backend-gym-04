@@ -1,10 +1,10 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { GenericStatus, Prisma } from '@prisma/client';
+import { DELETED_RECORD_RETENTION_DAYS } from '../common/constants/deleted-record-retention-days.const';
 import { PrismaService } from '../core/prisma/prisma.service';
 import { subUtcDays } from '../common/utils/utc-date.util';
-
-const USER_RETENTION_DAYS = 30;
+import { INDIVIDUALLY_PURGED_USER_ROLES } from './constants/individually-purged-user-roles.const';
 
 @Injectable()
 export class UsersCronService {
@@ -14,12 +14,14 @@ export class UsersCronService {
 
   @Cron(CronExpression.EVERY_DAY_AT_MIDNIGHT)
   async purgeDeletedUsers(): Promise<void> {
-    const thirtyDaysAgo = subUtcDays(new Date(), USER_RETENTION_DAYS);
+    const thirtyDaysAgo = subUtcDays(new Date(), DELETED_RECORD_RETENTION_DAYS);
 
     const staleUsers = await this.prisma.user.findMany({
       where: {
         status: GenericStatus.deleted,
         editAt: { lte: thirtyDaysAgo },
+        role: { in: INDIVIDUALLY_PURGED_USER_ROLES },
+        account: { status: { not: GenericStatus.deleted } },
       },
       select: { idUser: true },
     });
@@ -37,11 +39,23 @@ export class UsersCronService {
         data: { idCoach: null },
       });
 
+      await tx.membershipHistory.deleteMany({
+        where: { idUser: { in: userIds } },
+      });
+
+      await tx.customerMenu.deleteMany({
+        where: { idUser: { in: userIds } },
+      });
+
       await tx.featureFlag.deleteMany({
         where: { idUser: { in: userIds } },
       });
 
       await tx.entryLog.deleteMany({
+        where: { idUser: { in: userIds } },
+      });
+
+      await tx.routine.deleteMany({
         where: { idUser: { in: userIds } },
       });
 

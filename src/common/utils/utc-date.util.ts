@@ -14,3 +14,10 @@ export function addUtcDays(start: Date, days: number): Date {
 export function subUtcDays(from: Date, days: number): Date {
   return addUtcDays(from, -days);
 }
+
+/** Whole UTC calendar-day difference from `from` to `to` (both normalized to UTC midnight). */
+export function utcWholeCalendarDaysBetween(from: Date, to: Date): number {
+  const a = startOfUtcDay(from);
+  const b = startOfUtcDay(to);
+  return Math.round((b.getTime() - a.getTime()) / 86400000);
+}

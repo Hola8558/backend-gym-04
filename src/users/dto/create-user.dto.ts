@@ -1,11 +1,15 @@
 import { UserRole } from '@prisma/client';
+import { Type } from 'class-transformer';
 import { IsCommonEmailDomain } from '../../common/decorators/is-common-email-domain.decorator';
 import {
+  IsDateString,
   IsEmail,
   IsEnum,
+  IsNumber,
   IsOptional,
   IsString,
   MinLength,
+  ValidateIf,
 } from 'class-validator';
 
 export class CreateUserDto {
@@ -13,9 +17,13 @@ export class CreateUserDto {
   @IsCommonEmailDomain()
   email: string;
 
+  /**
+   * For `role: coach`, omit: `createUserWithProfile` uses the generated `userNumber` as the plain password.
+   * For customers created via `POST /users`, omit: the service uses the generated `userNumber` as the initial password.
+   */
+  @IsOptional()
   @IsString()
-  @MinLength(8)
-  password: string;
+  password?: string;
 
   @IsEnum(UserRole)
   role: UserRole;
@@ -39,4 +47,23 @@ export class CreateUserDto {
   @IsOptional()
   @IsString()
   emergency_phone?: string;
+
+  @IsOptional()
+  @IsString()
+  observations?: string;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  coachId?: number;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  membershipId?: number;
+
+  @IsOptional()
+  @ValidateIf((_, v) => v != null && String(v).trim() !== '')
+  @IsDateString()
+  birthdate?: string;
 }

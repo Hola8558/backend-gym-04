@@ -40,6 +40,7 @@ export class MembershipCronService {
       where: {
         status: GenericStatus.active,
         endDate: { lt: now },
+        account: { status: { not: GenericStatus.deleted } },
       },
       data: { status: GenericStatus.inactive },
     });

@@ -1,30 +1,71 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
 import {
+  IsArray,
   IsInt,
-  IsNotEmpty,
-  IsObject,
   IsOptional,
   IsString,
-  ValidateIf,
+  Min,
 } from 'class-validator';
 
 export class CreateRoutineDto {
-  @ApiPropertyOptional()
-  @IsOptional()
+  @ApiProperty()
   @Type(() => Number)
   @IsInt()
-  id_user?: number;
+  @Min(1)
+  id_user: number;
 
   @ApiPropertyOptional()
-  @ValidateIf((o) => o.id_user == null || o.name !== undefined)
+  @IsOptional()
   @IsString()
-  @ValidateIf((o) => o.id_user == null)
-  @IsNotEmpty()
   name?: string;
 
-  @ApiProperty({ type: 'object', additionalProperties: true })
-  @IsNotEmpty()
-  @IsObject()
-  data: Record<string, unknown>;
+  @ApiProperty()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  week: number;
+
+  @ApiPropertyOptional({ type: 'array', nullable: true })
+  @IsOptional()
+  @IsArray()
+  Lun?: unknown[] | null;
+
+  @ApiPropertyOptional({ type: 'array', nullable: true })
+  @IsOptional()
+  @IsArray()
+  Mar?: unknown[] | null;
+
+  @ApiPropertyOptional({ type: 'array', nullable: true })
+  @IsOptional()
+  @IsArray()
+  Mie?: unknown[] | null;
+
+  @ApiPropertyOptional({ type: 'array', nullable: true })
+  @IsOptional()
+  @IsArray()
+  Jue?: unknown[] | null;
+
+  @ApiPropertyOptional({ type: 'array', nullable: true })
+  @IsOptional()
+  @IsArray()
+  Vie?: unknown[] | null;
+
+  @ApiPropertyOptional({ type: 'array', nullable: true })
+  @IsOptional()
+  @IsArray()
+  Sab?: unknown[] | null;
+
+  @ApiPropertyOptional({ type: 'array', nullable: true })
+  @IsOptional()
+  @IsArray()
+  Dom?: unknown[] | null;
+
+  @ApiPropertyOptional({
+    description: 'ISO timestamp of last successful WhatsApp send',
+    example: '2026-08-13T22:00:00.000Z',
+  })
+  @IsOptional()
+  @IsString()
+  last_msg_sent?: string;
 }

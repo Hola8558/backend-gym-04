@@ -1,4 +1,8 @@
-import { Injectable, InternalServerErrorException } from '@nestjs/common';
+import {
+  Injectable,
+  InternalServerErrorException,
+  NotFoundException,
+} from '@nestjs/common';
 import {
   AccountType,
   GenericStatus,
@@ -6,17 +10,19 @@ import {
   UserRole,
 } from '@prisma/client';
 import * as bcrypt from 'bcrypt';
+import { isSoloCoachAccountType } from '../common/utils/is-solo-coach-account-type.util';
 import { PrismaService } from '../core/prisma/prisma.service';
-import { CreateAccountDto } from './dto/create-account.dto';
+import { CUSTOMERS_LIMIT_BY_TYPE } from './constants/customers-limit-by-type.const';
+import { EmailStatusValidationResponseDto } from './dto/email-status-validation-response.dto';
+import { SoftDeleteAccountResponseDto } from './dto/soft-delete-account-response.dto';
+import { StripeBillingService } from './stripe-billing.service';
+import type { CreateAccountWithUserInput } from './types/create-account-with-user-input.type';
+import { mapAccountStatusToEmailValidationStatus } from './utils/map-account-status-to-email-validation-status.util';
+import { softDeleteAccountCascade } from './utils/soft-delete-account-cascade.util';
+import { toEmailStatusValidationResponseDto } from './utils/to-email-status-validation-response.mapper';
+import { toSoftDeleteAccountResponseDto } from './utils/to-soft-delete-account-response.mapper';
 
 const NUMBERS = '0123456789';
-
-const CUSTOMERS_LIMIT_BY_TYPE: Record<AccountType, number> = {
-  [AccountType.gym]: 120,
-  [AccountType.coach]: 40,
-  [AccountType.studio]: 500,
-  [AccountType.enterprise]: 1000,
-};
 
 function generateUserNumber(): string {
   let out = '';
@@ -27,8 +33,8 @@ function generateUserNumber(): string {
 }
 
 function deriveFirstUserRole(accountType: AccountType): UserRole {
-  return accountType === AccountType.coach
-    ? UserRole.coach
+  return isSoloCoachAccountType(accountType)
+    ? UserRole.solo_coach
     : UserRole.owner;
 }
 
@@ -59,17 +65,24 @@ export type CreateAccountResponse = {
 
 @Injectable()
 export class AccountsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly stripeBillingService: StripeBillingService,
+  ) {}
 
   async createAccountWithUser(
-    dto: CreateAccountDto,
+    dto: CreateAccountWithUserInput,
   ): Promise<CreateAccountResponse> {
     const branch = dto.branch ?? 'A';
     const userNumber = generateUserNumber();
     const now = new Date();
     const customersLimit = CUSTOMERS_LIMIT_BY_TYPE[dto.type];
     const role = deriveFirstUserRole(dto.type);
-    const passwordHash = await bcrypt.hash(dto.password, 10);
+    const passwordHash =
+      dto.password == null || dto.password === ''
+        ? null
+        : await bcrypt.hash(dto.password, 10);
+    const requiresPasswordChange = dto.requiresPasswordChange ?? false;
 
     return this.prisma.$transaction(async (tx: Prisma.TransactionClient) => {
       const account = await tx.account.create({
@@ -81,6 +94,9 @@ export class AccountsService {
           accountDetail: {
             create: {
               customersLimit,
+              ...(dto.stripeCustomerId
+                ? { stripeCustomerId: dto.stripeCustomerId }
+                : {}),
             },
           },
           users: {
@@ -91,6 +107,7 @@ export class AccountsService {
               passwordHash,
               role,
               status: GenericStatus.active,
+              requiresPasswordChange,
               profile: {
                 create: {
                   name: dto.name,
@@ -133,5 +150,88 @@ export class AccountsService {
         email: hiddenEmail(user.email),
       };
     });
+  }
+
+  async findIdAccountsByStripeCustomerId(
+    stripeCustomerId: string,
+  ): Promise<number[]> {
+    const details = await this.prisma.accountDetail.findMany({
+      where: { stripeCustomerId },
+      select: { idAccount: true },
+    });
+    return details.map((detail) => detail.idAccount);
+  }
+
+  async setStatusByStripeCustomerId(
+    stripeCustomerId: string,
+    status: GenericStatus,
+  ): Promise<number> {
+    const idAccounts =
+      await this.findIdAccountsByStripeCustomerId(stripeCustomerId);
+    if (idAccounts.length === 0) {
+      return 0;
+    }
+
+    const result = await this.prisma.account.updateMany({
+      where: { idAccount: { in: idAccounts } },
+      data: { status },
+    });
+    return result.count;
+  }
+
+  async softDeleteAccountById(
+    idAccount: number,
+  ): Promise<SoftDeleteAccountResponseDto> {
+    const account = await this.prisma.account.findUnique({
+      where: { idAccount },
+      select: { idAccount: true, status: true },
+    });
+    if (!account) {
+      throw new NotFoundException('ACCOUNTS.ERRORS.NOT_FOUND');
+    }
+    if (account.status === GenericStatus.deleted) {
+      return toSoftDeleteAccountResponseDto({
+        id_account: idAccount,
+        already_deleted: true,
+      });
+    }
+
+    await this.prisma.$transaction(async (tx: Prisma.TransactionClient) => {
+      await softDeleteAccountCascade(tx, idAccount);
+    });
+
+    return toSoftDeleteAccountResponseDto({
+      id_account: idAccount,
+      already_deleted: false,
+    });
+  }
+
+  async validateEmailStatus(
+    email: string,
+  ): Promise<EmailStatusValidationResponseDto> {
+    const user = await this.prisma.user.findFirst({
+      where: {
+        email: { equals: email, mode: 'insensitive' },
+        status: { not: GenericStatus.deleted },
+      },
+      select: {
+        idAccount: true,
+        account: { select: { status: true } },
+      },
+    });
+
+    if (!user) {
+      return toEmailStatusValidationResponseDto('not_found');
+    }
+
+    const status = mapAccountStatusToEmailValidationStatus(user.account.status);
+    const stripeLink =
+      await this.stripeBillingService.createBillingPortalUrlOrNull(
+        user.idAccount,
+      );
+    return toEmailStatusValidationResponseDto(
+      status,
+      stripeLink ?? undefined,
+    );
   }
 }

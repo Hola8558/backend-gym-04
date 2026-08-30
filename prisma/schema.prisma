@@ -10,16 +10,18 @@ datasource db {
 enum UserRole {
   owner
   coach
+  solo_coach
   customer
 
   @@map("user_role")
 }
 
 enum AccountType {
-  gym
   coach
   studio
-  enterprise
+  pro
+  business
+  personalized
 
   @@map("account_type")
 }
@@ -29,23 +31,56 @@ enum GenericStatus {
   pending
   inactive
   deleted
+  banned
 
   @@map("generic_status")
 }
 
+enum BanStatus {
+  ACTIVE
+  INACTIVE
+
+  @@map("ban_status")
+}
+
+enum MembershipAction {
+  NEW
+  RENEWAL
+  CHANGE
+  CANCELLATION
+
+  @@map("membership_action")
+}
+
+enum CrowdmeterDay {
+  now
+  mon
+  tue
+  wed
+  thu
+  fri
+  sat
+  sun
+}
+
 enum MuscularGroup {
-  pecho
-  espalda
-  hombro_anterior
-  hombro_lateral
-  hombro_posterior
+  abdominals
+  abductors
+  adductors
   biceps
+  calves
+  chest
+  forearms
+  glutes
+  hamstrings
+  lats
+  lower_back
+  middle_back
+  neck
+  quadriceps
+  shoulders
+  traps
   triceps
-  cuadriceps
-  femorales
-  gluteos
-  pantorrillas
-  core
 
   @@map("muscular_group")
 }
@@ -55,23 +90,44 @@ model Account {
   name      String?       @map("name")
   type      AccountType   @map("type")
   createdAt DateTime      @map("created_at")
+  editAt    DateTime      @default(now()) @updatedAt @map("edit_at")
   status    GenericStatus @map("status")
 
-  accountDetail      AccountDetail?
+  accountDetail       AccountDetail?
   users               User[]
   membershipTypes     MembershipType[]
   routines            Routine[]
   exerciseFavs        ExerciseFav[]
   customerMemberships CustomerMembership[]
+  membershipHistories MembershipHistory[]
   activityLogs        ActivityLog[]
+  customerBans        CustomerBan[]
+  entryLogs               EntryLog[]
+  crowdmeters             Crowdmeter[]
+  categories              Category[]
+  recipes                 Recipe[]
+  originalNewIngredients  OriginalNewIngredient[]
 
   @@map("accounts")
 }
 
 model AccountDetail {
-  idAccountDetail Int @id @default(autoincrement()) @map("id_account_detail")
-  idAccount        Int @unique @map("id_account")
-  customersLimit   Int @map("customers_limit")
+  idAccountDetail Int       @id @default(autoincrement()) @map("id_account_detail")
+  idAccount       Int       @unique @map("id_account")
+  customersLimit  Int       @map("customers_limit")
+  accessCode      String?   @map("access_code")
+  lastDailyInit   DateTime? @map("last_daily_init")
+  primaryColor    String?   @map("primary_color") @db.VarChar(7)
+  logo            String?   @map("logo") @db.Text
+  favicon         String?   @map("favicon") @db.Text
+  logoKeyChange   String?   @map("logo_key_change") @db.VarChar(255)
+  colorKeyChange  String?   @map("color_key_change") @db.VarChar(255)
+  nameKeyChange   String?   @map("name_key_change") @db.VarChar(255)
+  maxCapacity     Int       @default(300) @map("max_capacity")
+  wspIdentifier   String?   @unique @map("wsp_identifier")
+  menuTemplate    String?   @map("menu_template") @db.Text
+  routineTemplate String?   @map("routine_template") @db.Text
+  stripeCustomerId String?  @map("stripe_customer_id") @db.Text
 
   account Account @relation(fields: [idAccount], references: [idAccount], onDelete: Cascade)
 
@@ -79,38 +135,53 @@ model AccountDetail {
 }
 
 model User {
-  idUser       Int           @id @default(autoincrement()) @map("id_user")
-  idAccount    Int           @map("id_account")
-  branch       String?       @map("branch")
-  userNumber   String?       @unique @map("user_number")
-  email        String?       @unique @map("email")
-  passwordHash String?       @map("password_hash")
-  role         UserRole      @map("role")
-  editAt       DateTime      @default(now()) @updatedAt @map("edit_at")
-  status       GenericStatus @map("status")
+  idUser                 Int           @id @default(autoincrement()) @map("id_user")
+  idAccount              Int           @map("id_account")
+  branch                 String?       @map("branch")
+  userNumber             String?       @unique @map("user_number")
+  email                  String?       @map("email")
+  passwordHash           String?       @map("password_hash")
+  role                   UserRole      @map("role")
+  editAt                 DateTime      @default(now()) @updatedAt @map("edit_at")
+  status                 GenericStatus @map("status")
+  deletedById            Int?          @map("deleted_by")
+  birthdate              DateTime?     @map("birthdate") @db.Date
+  /// When true, client must complete POST /auth/setup-password (e.g. coach with initial password = user number).
+  requiresPasswordChange Boolean       @default(false) @map("requires_password_change")
 
-  account             Account              @relation(fields: [idAccount], references: [idAccount])
+  account             Account             @relation(fields: [idAccount], references: [idAccount])
   profile             Profile?
   customerMembership  CustomerMembership?
+  membershipHistories MembershipHistory[]
   routines            Routine[]
   entryLogs           EntryLog[]
   featureFlags        FeatureFlag[]
-  coachedProfiles     Profile[]            @relation("ProfileCoach")
+  coachedProfiles     Profile[]           @relation("ProfileCoach")
   activityLogs        ActivityLog[]
+  bansAsCustomer      CustomerBan[]       @relation("BannedCustomer")
+  bansExecuted        CustomerBan[]       @relation("BanExecutedBy")
+  bansLifted          CustomerBan[]       @relation("BanLiftedBy")
+  deletedBy           User?               @relation("UserDeletedByActor", fields: [deletedById], references: [idUser], onDelete: SetNull)
+  usersDeletedByActor User[]              @relation("UserDeletedByActor")
+  customerMenus       CustomerMenu[]
 
+  /// Uniqueness for non-null emails per account is enforced by a partial DB index
+  /// (see migration `soft_delete_email_unique_partial`) — deleted rows are excluded.
+  @@index([email, idAccount])
   @@map("users")
 }
 
 model Profile {
-  idUser              Int           @id @map("id_user")
-  idCoach             Int?          @map("id_coach")
-  name                String?       @map("name")
-  lastName            String?       @map("last_name")
-  phone               String?       @map("phone")
-  emergencyPhone      String?       @map("emergency_phone")
-  timeSessionAlive    Int           @default(7) @map("time_session_alive")
-  createdAt           DateTime      @map("created_at")
-  status              GenericStatus @map("status")
+  idUser           Int           @id @map("id_user")
+  idCoach          Int?          @map("id_coach")
+  name             String?       @map("name")
+  lastName         String?       @map("last_name")
+  phone            String?       @map("phone")
+  emergencyPhone   String?       @map("emergency_phone")
+  observations     String?       @map("observations") @db.Text
+  timeSessionAlive Int           @default(7) @map("time_session_alive")
+  createdAt        DateTime      @map("created_at")
+  status           GenericStatus @map("status")
 
   user  User  @relation(fields: [idUser], references: [idUser])
   coach User? @relation("ProfileCoach", fields: [idCoach], references: [idUser])
@@ -119,16 +190,18 @@ model Profile {
 }
 
 model MembershipType {
-  idAccount        Int             @map("id_account")
-  idMembershipType Int             @map("id_membership_type")
-  name             String          @map("name")
-  durationDays     Int             @map("duration_days")
-  price            Decimal         @map("price") @db.Decimal(12, 2)
-  createdAt        DateTime        @map("created_at")
-  status           GenericStatus   @default(active) @map("status")
+  idAccount        Int           @map("id_account")
+  idMembershipType Int           @map("id_membership_type")
+  name             String        @map("name")
+  durationDays     Int           @map("duration_days")
+  price            Decimal       @map("price") @db.Decimal(12, 2)
+  features         String?       @map("features") @db.Text
+  createdAt        DateTime      @map("created_at")
+  updatedAt        DateTime      @default(now()) @updatedAt @map("updated_at")
+  status           GenericStatus @default(active) @map("status")
 
-  account               Account                @relation(fields: [idAccount], references: [idAccount])
-  customerMemberships   CustomerMembership[]
+  account             Account              @relation(fields: [idAccount], references: [idAccount])
+  customerMemberships CustomerMembership[]
 
   @@id([idAccount, idMembershipType])
   @@map("membership_types")
@@ -145,34 +218,64 @@ model CustomerMembership {
   createdAt            DateTime      @map("created_at")
   status               GenericStatus @map("status")
 
-  account        Account         @relation(fields: [idAccount], references: [idAccount])
-  user           User            @relation(fields: [idUser], references: [idUser])
-  membershipType MembershipType  @relation(fields: [idAccount, idMembershipType], references: [idAccount, idMembershipType])
+  account                  Account             @relation(fields: [idAccount], references: [idAccount])
+  user                     User                @relation(fields: [idUser], references: [idUser])
+  membershipType           MembershipType      @relation(fields: [idAccount, idMembershipType], references: [idAccount, idMembershipType])
+  membershipHistoriesAsNew MembershipHistory[] @relation("MembershipHistoryAsNew")
+  membershipHistoriesAsOld MembershipHistory[] @relation("MembershipHistoryAsOld")
 
   @@map("customer_memberships")
 }
 
+model MembershipHistory {
+  idLog           Int              @id @default(autoincrement()) @map("id_log")
+  idAccount       Int              @map("id_account")
+  idUser          Int              @map("id_user")
+  idNewMembership Int              @map("id_new_membership")
+  idOldMembership Int?             @map("id_old_membership")
+  actionType      MembershipAction @map("action_type")
+  startDate       DateTime         @map("start_date")
+  endDate         DateTime         @map("end_date")
+  createdAt       DateTime         @default(now()) @map("created_at")
+
+  account       Account             @relation(fields: [idAccount], references: [idAccount])
+  user          User                @relation(fields: [idUser], references: [idUser])
+  newMembership CustomerMembership  @relation("MembershipHistoryAsNew", fields: [idNewMembership], references: [idCustomerMembership])
+  oldMembership CustomerMembership? @relation("MembershipHistoryAsOld", fields: [idOldMembership], references: [idCustomerMembership])
+
+  @@index([idAccount, idUser])
+  @@map("membership_histories")
+}
+
 model Routine {
-  idRoutine Int      @id @default(autoincrement()) @map("id_routine")
-  idAccount Int?     @map("id_account")
-  idUser    Int?     @map("id_user")
-  name      String?  @map("name")
-  data      Json     @map("data")
-  createdAt DateTime @default(now()) @map("created_at")
+  idRoutine Int           @id @default(autoincrement()) @map("id_routine")
+  idAccount Int           @map("id_account")
+  idUser    Int           @map("id_user")
+  data      Json          @map("data")
+  name      String?       @map("name")
   status    GenericStatus @default(active) @map("status")
+  createdAt DateTime      @default(now()) @map("created_at")
+  editedAt  DateTime      @default(now()) @updatedAt @map("edited_at")
 
-  account Account? @relation(fields: [idAccount], references: [idAccount])
-  user    User?    @relation(fields: [idUser], references: [idUser])
+  account Account @relation(fields: [idAccount], references: [idAccount])
+  user    User    @relation(fields: [idUser], references: [idUser])
 
+  @@index([idAccount, idUser])
   @@map("routines")
 }
 
 model Exercise {
-  idExercise     Int            @id @default(autoincrement()) @map("id_exercise")
-  name           String?        @map("name")
-  muscularGroup  MuscularGroup  @map("muscular_group")
-  description    String?        @map("description")
-  url            String?        @map("url")
+  idExercise    Int           @id @default(autoincrement()) @map("id_exercise")
+  name          String?       @map("name")
+  description   String?       @map("description")
+  url           String?       @map("url")
+  idRef         String?       @map("id_ref") @db.VarChar(255)
+  force         String?       @map("force") @db.VarChar(100)
+  level         String?       @map("level") @db.VarChar(100)
+  mechanic      String?       @map("mechanic") @db.VarChar(100)
+  equipment     String?       @map("equipment") @db.VarChar(100)
+  category      String?       @map("category") @db.VarChar(100)
+  muscularGroup MuscularGroup @map("muscular_group")
 
   favs ExerciseFav[]
 
@@ -192,24 +295,39 @@ model ExerciseFav {
 
 model EntryLog {
   idEntryLog Int           @id @default(autoincrement()) @map("id_entry_log")
+  idAccount  Int           @map("id_account")
   idUser     Int           @map("id_user")
   entryDate  DateTime      @default(now()) @map("entry_date")
   status     GenericStatus @default(active) @map("status")
 
+  account Account @relation(fields: [idAccount], references: [idAccount])
   user    User    @relation(fields: [idUser], references: [idUser])
 
+  @@index([idAccount, entryDate])
   @@map("entry_logs")
 }
 
+model Crowdmeter {
+  id         Int           @id @default(autoincrement())
+  id_account Int
+  identifier CrowdmeterDay
+  data       Json
+  updatedAt  DateTime      @default(now()) @updatedAt @map("updated_at")
+
+  account Account @relation(fields: [id_account], references: [idAccount])
+
+  @@unique([id_account, identifier])
+}
+
 model ActivityLog {
-  id_log      Int      @id @default(autoincrement())
-  id_account  Int
-  id_user     Int
-  action      String   // "CREATE", "UPDATE", "DELETE", etc.
-  entity      String   // "CUSTOMER", "MEMBERSHIP", "FEATURE", etc.
-  entity_id   Int?
-  metadata    Json?
-  created_at  DateTime @default(now())
+  id_log     Int      @id @default(autoincrement())
+  id_account Int
+  id_user    Int
+  action     String // "CREATE", "UPDATE", "DELETE", etc.
+  entity     String // "CUSTOMER", "MEMBERSHIP", "FEATURE", etc.
+  entity_id  Int?
+  metadata   Json?
+  created_at DateTime @default(now())
 
   account Account @relation(fields: [id_account], references: [idAccount], onDelete: Cascade)
   user    User    @relation(fields: [id_user], references: [idUser], onDelete: Cascade)
@@ -228,8 +346,8 @@ model Feature {
   createdAt       DateTime      @map("created_at")
   status          GenericStatus @map("status")
 
-  parent   Feature?       @relation("FeatureTree", fields: [idFeatureParent], references: [idFeature])
-  children Feature[]      @relation("FeatureTree")
+  parent   Feature?      @relation("FeatureTree", fields: [idFeatureParent], references: [idFeature])
+  children Feature[]     @relation("FeatureTree")
   flags    FeatureFlag[]
 
   @@map("features")
@@ -245,4 +363,124 @@ model FeatureFlag {
 
   @@id([idUser, idFeature])
   @@map("feature_flags")
+}
+
+model CustomerBan {
+  idBan      Int       @id @default(autoincrement()) @map("id_ban")
+  idAccount  Int       @map("id_account")
+  idCustomer Int       @map("id_customer")
+  idCoach    Int       @map("id_coach")
+  reason     String    @map("reason") @db.Text
+  createdAt  DateTime  @default(now()) @map("created_at")
+  status     BanStatus @default(ACTIVE) @map("status")
+  liftedAt   DateTime? @map("lifted_at")
+  liftedById Int?      @map("lifted_by")
+  liftReason String?   @map("lift_reason") @db.Text
+
+  account  Account @relation(fields: [idAccount], references: [idAccount], onDelete: Cascade)
+  customer User    @relation("BannedCustomer", fields: [idCustomer], references: [idUser], onDelete: Cascade)
+  coach    User    @relation("BanExecutedBy", fields: [idCoach], references: [idUser], onDelete: Cascade)
+  liftedBy User?   @relation("BanLiftedBy", fields: [liftedById], references: [idUser], onDelete: SetNull)
+
+  @@map("customer_bans")
+}
+
+model Category {
+  idResourcesCategories Int           @id @default(autoincrement()) @map("id_resources_categories")
+  idAccount             Int           @map("id_account")
+  name                  String        @db.Text
+  description           String?       @db.Text
+  createdAt             DateTime      @default(now()) @map("created_at")
+  editedAt              DateTime      @default(now()) @updatedAt @map("edited_at")
+  status                GenericStatus @default(active) @map("status")
+
+  account Account @relation(fields: [idAccount], references: [idAccount], onDelete: Cascade)
+  media   Media[]
+
+  @@index([idAccount])
+  @@map("resources_categories")
+}
+
+model Media {
+  idResourcesMedia Int           @id @default(autoincrement()) @map("id_resources_media")
+  categoryId       Int           @map("category_id")
+  title            String        @db.Text
+  description      String?       @db.Text
+  link             String        @db.Text
+  createdAt        DateTime      @default(now()) @map("created_at")
+  editedAt         DateTime      @default(now()) @updatedAt @map("edited_at")
+  status           GenericStatus @default(active) @map("status")
+
+  category Category @relation(fields: [categoryId], references: [idResourcesCategories], onDelete: Cascade)
+
+  @@index([categoryId])
+  @@map("resources_media")
+}
+
+/// Global ingredient catalog (nutrition per 100g / unit).
+model Ingredient {
+  idIngredient   Int       @id @default(autoincrement()) @map("id_ingredient")
+  nameEs         String?   @map("name_es") @db.Text
+  nameEn         String?   @map("name_en") @db.Text
+  kcalPer100g    Int?      @map("kcal_per_100g")
+  emoji          String?   @map("emoji") @db.Text
+  weightPerUnit  Int?      @map("weight_per_unit")
+  carbs100g      Int?      @map("carbs_100g")
+  fat100g        Int?      @map("fat_100g")
+  protein100g    Int?      @map("protein_100g")
+  createdAt      DateTime  @default(now()) @map("created_at")
+
+  asOriginal OriginalNewIngredient[] @relation("OriginalIngredient")
+  asNew      OriginalNewIngredient[] @relation("NewIngredient")
+
+  @@map("ingredients")
+}
+
+/// Maps an optional original ingredient to a replacement (`id_new`) per account.
+model OriginalNewIngredient {
+  idOriginalNew Int  @id @default(autoincrement()) @map("id_original_new")
+  idAccount     Int  @map("id_account")
+  idOriginal    Int? @map("id_original")
+  idNew         Int  @map("id_new")
+
+  account            Account     @relation(fields: [idAccount], references: [idAccount])
+  originalIngredient Ingredient? @relation("OriginalIngredient", fields: [idOriginal], references: [idIngredient])
+  newIngredient      Ingredient  @relation("NewIngredient", fields: [idNew], references: [idIngredient])
+
+  @@map("original_new_ingredients")
+}
+
+/// Tenant or global recipe. Column `id_recipie` spelling matches the live DB.
+/// `id_account` null = shared global recipe visible to all tenants.
+model Recipe {
+  idRecipie   Int      @id @default(autoincrement()) @map("id_recipie")
+  idAccount   Int?     @map("id_account")
+  name        String?  @db.Text
+  carb        Int?
+  fat         Int?
+  protein     Int?
+  ingredients Int[]
+  /// Postgres composite array: item_ingrediente[] = (ingrediente_id INT, gramos NUMERIC)[]
+  /// Read/write via Prisma $queryRaw / $executeRaw (see recipes/utils/item-ingrediente-raw-sql.util.ts).
+  ingredientesCantidades Unsupported("item_ingrediente[]")? @map("ingredientes_cantidades")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  account Account? @relation(fields: [idAccount], references: [idAccount])
+
+  @@map("recipes")
+}
+
+/// Customer meal plan payload (strict/dynamic) stored as JSONB.
+model CustomerMenu {
+  idMenu    Int           @id @default(autoincrement()) @map("id_menu")
+  idUser    Int           @map("id_user")
+  createdAt DateTime      @default(now()) @map("created_at")
+  updatedAt DateTime      @default(now()) @updatedAt @map("updated_at")
+  status    GenericStatus @map("status")
+  data      Json          @map("data")
+
+  user User @relation(fields: [idUser], references: [idUser])
+
+  @@index([idUser])
+  @@map("customer_menus")
 }

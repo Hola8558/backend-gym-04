@@ -1,14 +1,29 @@
-import { ApiProperty } from '@nestjs/swagger';
-import { IsIn, IsString, MinLength } from 'class-validator';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import {
+  IsIn,
+  IsNotEmpty,
+  IsString,
+  ValidateIf,
+} from 'class-validator';
 
 export class ForgotPasswordDto {
-  @ApiProperty({
-    description: 'User email address or user_number',
+  @ApiPropertyOptional({
+    description: 'Plain user email address (not masked)',
     example: 'user@example.com',
   })
+  @ValidateIf((dto: ForgotPasswordDto) => !dto.userNumber?.trim())
+  @IsNotEmpty({ message: 'AUTH.ERRORS.FORGOT_PASSWORD_IDENTIFIER_REQUIRED' })
   @IsString()
-  @MinLength(1)
-  identifier: string;
+  identifier?: string;
+
+  @ApiPropertyOptional({
+    description: 'Numeric user_number for password reset',
+    example: '12345',
+  })
+  @ValidateIf((dto: ForgotPasswordDto) => !dto.identifier?.trim())
+  @IsNotEmpty({ message: 'AUTH.ERRORS.FORGOT_PASSWORD_IDENTIFIER_REQUIRED' })
+  @IsString()
+  userNumber?: string;
 
   @ApiProperty({
     description: 'Active UI language for the password-reset email template',

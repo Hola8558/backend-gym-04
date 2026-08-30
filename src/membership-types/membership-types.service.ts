@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  ConflictException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
@@ -15,6 +16,14 @@ import { UpdateMembershipTypeDto } from './dto/update-membership-type.dto';
 export class MembershipTypesService {
   constructor(private readonly prisma: PrismaService) {}
 
+  private normalizeFeatures(value: string | undefined): string | null {
+    if (value === undefined || value === null) {
+      return null;
+    }
+    const trimmed = value.trim();
+    return trimmed === '' ? null : trimmed;
+  }
+
   private toResponse(row: MembershipType): MembershipTypeResponseDto {
     return plainToInstance(
       MembershipTypeResponseDto,
@@ -23,6 +32,7 @@ export class MembershipTypesService {
         name: row.name,
         duration_days: row.durationDays,
         price: row.price.toString(),
+        features: row.features ?? null,
         status: row.status,
       },
       { excludeExtraneousValues: true },
@@ -35,7 +45,7 @@ export class MembershipTypesService {
     }
     const allowed = Object.values(GenericStatus) as string[];
     if (!allowed.includes(statusParam)) {
-      throw new BadRequestException(`Invalid status: ${statusParam}`);
+      throw new BadRequestException('MEMBERSHIP_TYPES.ERRORS.INVALID_STATUS');
     }
     return statusParam as GenericStatus;
   }
@@ -52,6 +62,9 @@ export class MembershipTypesService {
     }
     if (dto.price !== undefined) {
       data.price = dto.price;
+    }
+    if (dto.features !== undefined) {
+      data.features = this.normalizeFeatures(dto.features) ?? null;
     }
     return data;
   }
@@ -71,12 +84,37 @@ export class MembershipTypesService {
         name: dto.name,
         durationDays: dto.duration_days,
         price: dto.price,
+        features: this.normalizeFeatures(dto.features),
         createdAt: now,
         status: GenericStatus.active,
       },
     });
 
     return this.toResponse(row);
+  }
+
+  private async countActiveCustomerMemberships(
+    idAccount: number,
+    idMembershipType: number,
+  ): Promise<number> {
+    return this.prisma.customerMembership.count({
+      where: {
+        idAccount,
+        idMembershipType,
+        status: GenericStatus.active,
+      },
+    });
+  }
+
+  async canDelete(idAccount: number, idMembershipType: number) {
+    const count = await this.countActiveCustomerMemberships(
+      idAccount,
+      idMembershipType,
+    );
+    if (count > 0) {
+      throw new ConflictException('MEMBERSHIPS.ERRORS.HAS_ACTIVE_CUSTOMERS');
+    }
+    return { canDelete: true as const };
   }
 
   async findAll(idAccount: number, statusQuery?: string) {
@@ -86,7 +124,7 @@ export class MembershipTypesService {
       where.status = explicitStatus;
     } else {
       where.status = {
-        in: [GenericStatus.active, GenericStatus.inactive],
+        in: [GenericStatus.active],
       };
     }
 
@@ -111,7 +149,7 @@ export class MembershipTypesService {
         },
       });
       if (!existing) {
-        throw new NotFoundException('Membership type not found');
+        throw new NotFoundException('MEMBERSHIP_TYPES.ERRORS.NOT_FOUND');
       }
       return this.toResponse(existing);
     }
@@ -126,24 +164,32 @@ export class MembershipTypesService {
       return this.toResponse(row);
     } catch (e) {
       if (e instanceof PrismaClientKnownRequestError && e.code === 'P2025') {
-        throw new NotFoundException('Membership type not found');
+        throw new NotFoundException('MEMBERSHIP_TYPES.ERRORS.NOT_FOUND');
       }
       throw e;
     }
   }
 
   async softDelete(idAccount: number, idMembershipType: number) {
+    const activeCount = await this.countActiveCustomerMemberships(
+      idAccount,
+      idMembershipType,
+    );
+    if (activeCount > 0) {
+      throw new ConflictException('MEMBERSHIPS.ERRORS.HAS_ACTIVE_CUSTOMERS');
+    }
+
     try {
       const row = await this.prisma.membershipType.update({
         where: {
           idAccount_idMembershipType: { idAccount, idMembershipType },
         },
-        data: { status: GenericStatus.deleted },
+        data: { status: GenericStatus.inactive },
       });
       return this.toResponse(row);
     } catch (e) {
       if (e instanceof PrismaClientKnownRequestError && e.code === 'P2025') {
-        throw new NotFoundException('Membership type not found');
+        throw new NotFoundException('MEMBERSHIP_TYPES.ERRORS.NOT_FOUND');
       }
       throw e;
     }
