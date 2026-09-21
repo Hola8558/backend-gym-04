@@ -48,8 +48,8 @@ export class CustomerMenusController {
   }
 
   /**
-   * Staff list path (not `/`) so Flutter `GET /customer-menus` can serve the
-   * mobile active-menu viewer without hitting RolesGuard(owner/coach).
+   * Staff list path (not `/`). Mobile sync lives at `POST /customer-menus/sync`
+   * (`CustomersMenusController`) so it does not collide with `POST` create below.
    */
   @Get('by-user')
   @Roles(UserRole.coach, UserRole.owner, UserRole.solo_coach)

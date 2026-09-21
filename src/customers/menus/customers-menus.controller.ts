@@ -66,7 +66,11 @@ export class CustomersMenusController {
 
 
 
-  @Post()
+  /**
+   * Prefer `/sync` (not bare `POST /customer-menus`) so staff web create
+   * (`CustomerMenusController.create`) is not shadowed.
+   */
+  @Post('sync')
 
   @HttpCode(HttpStatus.OK)
 

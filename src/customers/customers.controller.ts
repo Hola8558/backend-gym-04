@@ -41,6 +41,7 @@ import { BulkImportCustomersDto } from './dto/bulk-import-customers.dto';
 import { BulkImportCustomersResponseDto } from './dto/bulk-import-customers-response.dto';
 import { CustomersService } from './customers.service';
 import { CustomersImportService } from './customers-import.service';
+import { CUSTOMER_READ_FEATURES } from './constants/customer-read-features.const';
 import type { DashboardSignUpHalf } from './types/dashboard-sign-up-half';
 import { isValidIanaTimeZone } from '../common/utils/zoned-day-range.util';
 
@@ -101,7 +102,7 @@ export class CustomersController {
   @Get()
   @UseGuards(RolesGuard, FeatureGuard)
   @Roles(UserRole.owner, UserRole.coach, UserRole.solo_coach)
-  @RequireFeature(5009, 5011, 5004)
+  @RequireFeature(...CUSTOMER_READ_FEATURES)
   findAll(
     @CurrentUser() user: JwtPayload,
     @Query() query: ListCustomersQueryDto,
@@ -122,7 +123,7 @@ export class CustomersController {
   @Get('dashboard/metrics')
   @UseGuards(RolesGuard, FeatureGuard)
   @Roles(UserRole.owner, UserRole.coach, UserRole.solo_coach)
-  @RequireFeature(5009, 5011, 5004)
+  @RequireFeature(...CUSTOMER_READ_FEATURES)
   @ApiOkResponse({ type: DashboardMetricsResponseDto })
   @ApiQuery({ name: 'trend_year', required: false, type: Number })
   @ApiQuery({ name: 'trend_half', required: false, enum: [1, 2] })
@@ -163,7 +164,7 @@ export class CustomersController {
   @Get('search')
   @UseGuards(RolesGuard, FeatureGuard)
   @Roles(UserRole.owner, UserRole.coach, UserRole.solo_coach)
-  @RequireFeature(5009, 5011, 5004)
+  @RequireFeature(...CUSTOMER_READ_FEATURES)
   search(
     @CurrentUser() user: JwtPayload,
     @Query() query: ListCustomersQueryDto,
@@ -185,7 +186,7 @@ export class CustomersController {
   @Get('deleted')
   @UseGuards(RolesGuard, FeatureGuard)
   @Roles(UserRole.owner, UserRole.coach, UserRole.solo_coach)
-  @RequireFeature(5009, 5011, 5004)
+  @RequireFeature(...CUSTOMER_READ_FEATURES)
   @ApiOkResponse({ type: DeletedCustomerResponseDto, isArray: true })
   findDeleted(
     @CurrentUser() user: JwtPayload,
@@ -208,7 +209,7 @@ export class CustomersController {
   @Get('banned')
   @UseGuards(RolesGuard, FeatureGuard)
   @Roles(UserRole.owner, UserRole.coach, UserRole.solo_coach)
-  @RequireFeature(5009, 5011, 5004)
+  @RequireFeature(...CUSTOMER_READ_FEATURES)
   @ApiOkResponse({ type: BannedCustomerResponseDto })
   findBanned(
     @CurrentUser() user: JwtPayload,
@@ -228,7 +229,7 @@ export class CustomersController {
   @Get(':id/ban-history')
   @UseGuards(RolesGuard, FeatureGuard)
   @Roles(UserRole.owner, UserRole.coach, UserRole.solo_coach)
-  @RequireFeature(5009, 5011, 5004)
+  @RequireFeature(...CUSTOMER_READ_FEATURES)
   @ApiOkResponse({ type: CustomerBanHistoryEntryDto, isArray: true })
   getBanHistory(
     @CurrentUser() user: JwtPayload,
@@ -240,7 +241,7 @@ export class CustomersController {
   @Get(':id')
   @UseGuards(RolesGuard, FeatureGuard)
   @Roles(UserRole.owner, UserRole.coach, UserRole.solo_coach)
-  @RequireFeature(5009, 5011, 5004)
+  @RequireFeature(...CUSTOMER_READ_FEATURES)
   @ApiOkResponse({ type: CustomerResponseDto })
   findOne(
     @CurrentUser() user: JwtPayload,

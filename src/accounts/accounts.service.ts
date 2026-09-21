@@ -82,7 +82,7 @@ export class AccountsService {
       dto.password == null || dto.password === ''
         ? null
         : await bcrypt.hash(dto.password, 10);
-    const requiresPasswordChange = dto.requiresPasswordChange ?? false;
+    const requiresPasswordChange = dto.requiresPasswordChange ?? true;
 
     return this.prisma.$transaction(async (tx: Prisma.TransactionClient) => {
       const account = await tx.account.create({

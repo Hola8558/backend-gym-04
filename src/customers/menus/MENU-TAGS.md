@@ -1,7 +1,7 @@
 # Menu tags — where macros live
 
 Mini-doc for the **tag snapshots** that mirror the web menu creator metrics bar.
-Applies to persisted `customer_menus.data` (Angular Save) and to Flutter `GET /customer-menus` after hydrate.
+Applies to persisted `customer_menus.data` (Angular Save) and to Flutter `POST /customer-menus/sync` after hydrate.
 
 All tag numbers are **integers** (`Math.round`, same as creator `menuRoundInt`). Example: `5.6` → `6`.
 

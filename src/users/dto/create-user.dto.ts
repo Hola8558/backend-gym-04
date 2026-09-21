@@ -18,8 +18,8 @@ export class CreateUserDto {
   email: string;
 
   /**
-   * For `role: coach`, omit: `createUserWithProfile` uses the generated `userNumber` as the plain password.
-   * For customers created via `POST /users`, omit: the service uses the generated `userNumber` as the initial password.
+   * Optional. If omitted for coach/customer, initial password is the generated `userNumber`.
+   * Coach and customer creates always set `requiresPasswordChange: true`.
    */
   @IsOptional()
   @IsString()

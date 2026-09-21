@@ -14,13 +14,16 @@ Swagger tag: **customers / menus** (`/api`).
 
 | Method / path | Notes |
 |---------------|--------|
-| **`POST /customer-menus`** | Preferred for Flutter — uses JWT `sub` as the customer id (no path param) |
+| **`POST /customer-menus/sync`** | Preferred for Flutter — uses JWT `sub` as the customer id (no path param) |
 | `POST /customer-menus/active/:id_user` | Explicit id (must be self when role is `customer`) |
 | `POST /customer-menus/client/:id_user` | Alias mirroring routines naming |
+
+> **Breaking change:** the preferred path used to be bare `POST /customer-menus`. That path is now **staff web create** (`{ id_user, data }`). See [`MOBILE-MENU-SYNC-MIGRATION.md`](./MOBILE-MENU-SYNC-MIGRATION.md).
 
 Body carries the client cache stamp (`created_at` + `updated_at`). Same idea as `POST /customers/sync-routine`.
 
 Staff web list is **`GET /customer-menus/by-user?id_user=`** (owner/coach/solo_coach only).
+Staff web create is **`POST /customer-menus`** with `{ id_user, data }` (owner/coach/solo_coach only).
 
 ---
 
@@ -95,7 +98,7 @@ The JWT payload includes at least:
 ### Preferred (Flutter)
 
 ```http
-POST /customer-menus
+POST /customer-menus/sync
 Authorization: Bearer <accessToken>
 Content-Type: application/json
 
@@ -149,14 +152,14 @@ curl -sS -X POST \
   -H "Authorization: Bearer ${TOKEN}" \
   -H "Content-Type: application/json" \
   -d '{"created_at":null,"updated_at":null}' \
-  "https://<api-host>/customer-menus"
+  "https://<api-host>/customer-menus/sync"
 ```
 
 ### Flutter (sketch)
 
 ```dart
 final response = await dio.post(
-  '/customer-menus',
+  '/customer-menus/sync',
   data: {
     'created_at': cachedCreatedAt, // null on first sync
     'updated_at': cachedUpdatedAt,
@@ -444,7 +447,7 @@ FE dictionaries (web) include EN/ES strings for those `CUSTOMERS.ERRORS.*` keys;
 | API | Module | Who | Purpose |
 |-----|--------|-----|---------|
 | `GET /customer-menus/by-user?id_user=` + POST/PATCH/DELETE… | `src/customer-menus/` | owner / coach / solo_coach | Web CRUD, raw `data` |
-| **`GET /customer-menus`** (and `/active/:id_user`, `/client/:id_user`) | **`src/customers/menus/`** | **Flutter JWT** | Active menu + ingredient hydration |
+| **`POST /customer-menus/sync`** (and `/active/:id_user`, `/client/:id_user`) | **`src/customers/menus/`** | **Flutter JWT** | Active menu sync + ingredient hydration |
 
 Use the mobile login token on the Flutter paths above — not the staff `by-user` list.
 

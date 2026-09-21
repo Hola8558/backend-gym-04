@@ -1,4 +1,6 @@
 export const EMAIL_STATUS_DEV_ORIGINS = [
+  'http://localhost:4200',
+  'http://127.0.0.1:4200',
   'http://localhost:5082',
   'http://127.0.0.1:5082',
 ] as const;

@@ -236,8 +236,7 @@ export class UsersService {
                 }
               : {}),
             requiresPasswordChange:
-              dto.role === UserRole.coach &&
-              (dto.password == null || dto.password.trim().length === 0),
+              dto.role === UserRole.coach || dto.role === UserRole.customer,
             profile: {
               create: profileCreate,
             },
@@ -413,6 +412,7 @@ export class UsersService {
           passwordHash,
           role: UserRole.customer,
           status: GenericStatus.active,
+          requiresPasswordChange: true,
           ...(row.birthdate ? { birthdate: row.birthdate } : {}),
           profile: {
             create: profileCreate,
