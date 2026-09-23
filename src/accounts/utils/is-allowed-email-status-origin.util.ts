@@ -1,7 +1,7 @@
 import {
   EMAIL_STATUS_DEV_ORIGINS,
-  EMAIL_STATUS_PROD_ORIGIN,
-  EMAIL_STATUS_PROD_REFERER_PREFIX,
+  EMAIL_STATUS_PROD_ORIGINS,
+  EMAIL_STATUS_PROD_REFERER_PREFIXES,
 } from '../constants/email-status-allowed-origins.const';
 
 export function isAllowedEmailStatusOrigin(
@@ -15,13 +15,18 @@ export function isAllowedEmailStatusOrigin(
     return true;
   }
 
-  if (resolvedOrigin !== EMAIL_STATUS_PROD_ORIGIN) {
+  if (
+    !(EMAIL_STATUS_PROD_ORIGINS as readonly string[]).includes(resolvedOrigin)
+  ) {
     return false;
   }
 
   const resolvedReferer = referer?.trim() ?? '';
-  return (
-    resolvedReferer === '' ||
-    resolvedReferer.startsWith(EMAIL_STATUS_PROD_REFERER_PREFIX)
+  if (resolvedReferer === '') {
+    return true;
+  }
+
+  return (EMAIL_STATUS_PROD_REFERER_PREFIXES as readonly string[]).some(
+    (prefix) => resolvedReferer.startsWith(prefix),
   );
 }

@@ -69,6 +69,11 @@ ALTER TABLE "gym_db"."exercises"
 UPDATE "gym_db"."exercises"
 SET "muscular_group_scalar" = "gym_db".map_muscular_group_label("muscular_group"::text);
 
+-- Rows with NULL / unmappable labels: default to chest so SET NOT NULL can succeed.
+UPDATE "gym_db"."exercises"
+SET "muscular_group_scalar" = 'chest'
+WHERE "muscular_group_scalar" IS NULL;
+
 ALTER TABLE "gym_db"."exercises" DROP COLUMN "muscular_group";
 ALTER TABLE "gym_db"."exercises" DROP COLUMN IF EXISTS "secondaryMuscles";
 ALTER TABLE "gym_db"."exercises" RENAME COLUMN "muscular_group_scalar" TO "muscular_group";

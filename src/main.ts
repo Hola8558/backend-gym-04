@@ -28,6 +28,7 @@ async function bootstrap() {
       /^http:\/\/localhost:\d+$/,
       /^http:\/\/127\.0\.0\.1:\d+$/,
       'https://technolo-g.mx',
+      'https://www.technolo-g.mx',
     ],
     methods: ['GET', 'HEAD', 'PUT', 'PATCH', 'POST', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization', 'Stripe-Signature'],
