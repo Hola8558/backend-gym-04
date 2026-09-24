@@ -15,6 +15,7 @@ import { MembershipAuditService } from '../membership-audit/membership-audit.ser
 import { MembershipAction } from '../membership-audit/types/membership-action.const';
 import { membershipRowDatesToAudit } from '../membership-audit/utils/membership-history-date.util';
 import { PrismaService } from '../core/prisma/prisma.service';
+import { resolveInitialFeatureFlagStatus } from '../common/utils/resolve-initial-feature-flag-status.util';
 import { CreateUserDto } from './dto/create-user.dto';
 import { findNonDeletedUserByEmailInAccount } from './utils/find-non-deleted-user-by-email-in-account.util';
 import { generateUserNumber } from './utils/generate-user-number.util';
@@ -77,9 +78,7 @@ export class UsersService {
     }
 
     return features.map((feature) => ({
-      status: feature.customizable
-        ? GenericStatus.inactive
-        : GenericStatus.active,
+      status: resolveInitialFeatureFlagStatus(feature.customizable),
       feature: {
         connect: { idFeature: feature.idFeature },
       },

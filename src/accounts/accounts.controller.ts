@@ -19,7 +19,8 @@ import { Public } from '../auth/public.decorator';
 import { Roles } from '../common/decorators/roles.decorator';
 import { RolesGuard } from '../common/guards/roles.guard';
 import { AccountsService } from './accounts.service';
-import { CreateAccountDto } from './dto/create-account.dto';
+// CreateAccountDto kept for the commented manual POST /accounts route below.
+// import { CreateAccountDto } from './dto/create-account.dto';
 import { AccountSubscriptionResponseDto } from './dto/account-subscription-response.dto';
 import { BillingPortalSessionResponseDto } from './dto/billing-portal-session-response.dto';
 import { DeleteAccountTestDto } from './dto/delete-account-test.dto';
@@ -42,11 +43,13 @@ export class AccountsController {
     return { data: [], placeholder: true };
   }
 
-  @Public()
-  @Post()
-  create(@Body() dto: CreateAccountDto) {
-    return this.accountsService.createAccountWithUser(dto);
-  }
+  // Manual account creation disabled: accounts are created only via Stripe webhook
+  // (checkout.session.completed → createAccountWithUser).
+  // @Public()
+  // @Post()
+  // create(@Body() dto: CreateAccountDto) {
+  //   return this.accountsService.createAccountWithUser(dto);
+  // }
 
   @Public()
   @Post('webhooks/stripe')

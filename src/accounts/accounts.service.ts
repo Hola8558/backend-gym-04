@@ -11,6 +11,7 @@ import {
 } from '@prisma/client';
 import * as bcrypt from 'bcrypt';
 import { isSoloCoachAccountType } from '../common/utils/is-solo-coach-account-type.util';
+import { resolveInitialFeatureFlagStatus } from '../common/utils/resolve-initial-feature-flag-status.util';
 import { PrismaService } from '../core/prisma/prisma.service';
 import { CUSTOMERS_LIMIT_BY_TYPE } from './constants/customers-limit-by-type.const';
 import { EmailStatusValidationResponseDto } from './dto/email-status-validation-response.dto';
@@ -131,7 +132,14 @@ export class AccountsService {
       }
 
       const features = await tx.feature.findMany({
-        where: { role: role },
+        where: {
+          role,
+          status: GenericStatus.active,
+        },
+        select: {
+          idFeature: true,
+          customizable: true,
+        },
       });
 
       if (features.length > 0) {
@@ -139,7 +147,7 @@ export class AccountsService {
           data: features.map((f) => ({
             idUser: user.idUser,
             idFeature: f.idFeature,
-            status: GenericStatus.active,
+            status: resolveInitialFeatureFlagStatus(f.customizable),
           })),
         });
       }
