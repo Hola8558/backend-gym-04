@@ -156,9 +156,24 @@ export class StripeWebhookService {
       throw new BadRequestException('STRIPE.ERRORS.INVALID_SUBSCRIPTION');
     }
 
-    await this.applyAccountStatusFromStripeSubscription(
-      event.data.object,
-      GenericStatus.inactive,
+    const stripeCustomerId = extractSubscriptionCustomerId(event.data.object);
+    if (!stripeCustomerId) {
+      throw new BadRequestException('STRIPE.ERRORS.MISSING_CUSTOMER');
+    }
+
+    const softDeleted =
+      await this.accountsService.softDeleteAccountsByStripeCustomerId(
+        stripeCustomerId,
+      );
+    if (softDeleted === 0) {
+      this.logger.log(
+        `Stripe subscription deleted skipped; no active account for customer ${stripeCustomerId}`,
+      );
+      return;
+    }
+
+    this.logger.log(
+      `Stripe subscription deleted: soft-deleted ${softDeleted} account(s) for customer ${stripeCustomerId}`,
     );
   }
 

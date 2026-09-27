@@ -187,6 +187,25 @@ export class AccountsService {
     return result.count;
   }
 
+  async softDeleteAccountsByStripeCustomerId(
+    stripeCustomerId: string,
+  ): Promise<number> {
+    const idAccounts =
+      await this.findIdAccountsByStripeCustomerId(stripeCustomerId);
+    if (idAccounts.length === 0) {
+      return 0;
+    }
+
+    let softDeleted = 0;
+    for (const idAccount of idAccounts) {
+      const result = await this.softDeleteAccountById(idAccount);
+      if (!result.already_deleted) {
+        softDeleted += 1;
+      }
+    }
+    return softDeleted;
+  }
+
   async softDeleteAccountById(
     idAccount: number,
   ): Promise<SoftDeleteAccountResponseDto> {

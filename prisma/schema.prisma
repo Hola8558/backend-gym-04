@@ -267,7 +267,10 @@ model Routine {
 model Exercise {
   idExercise    Int           @id @default(autoincrement()) @map("id_exercise")
   name          String?       @map("name")
+  nameEs        String?       @map("name_es")
   description   String?       @map("description")
+  descriptionEs String?       @map("description_es")
+  aliases       String[]      @default([]) @map("aliases")
   url           String?       @map("url")
   idRef         String?       @map("id_ref") @db.VarChar(255)
   force         String?       @map("force") @db.VarChar(100)

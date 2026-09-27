@@ -13,12 +13,24 @@ export class ExerciseResponseDto {
   name: string | null;
 
   @Expose()
+  @ApiProperty({ nullable: true })
+  name_es: string | null;
+
+  @Expose()
   @ApiProperty({ enum: MuscularGroup })
   muscular_group: MuscularGroup;
 
   @Expose()
   @ApiProperty({ nullable: true })
   description: string | null;
+
+  @Expose()
+  @ApiProperty({ nullable: true })
+  description_es: string | null;
+
+  @Expose()
+  @ApiProperty({ type: [String] })
+  aliases: string[];
 
   @Expose()
   @ApiProperty({ nullable: true })

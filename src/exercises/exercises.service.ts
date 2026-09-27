@@ -27,8 +27,11 @@ export class ExercisesService {
       {
         id_exercise: exercise.idExercise,
         name: exercise.name,
+        name_es: exercise.nameEs,
         muscular_group: exercise.muscularGroup,
         description: exercise.description,
+        description_es: exercise.descriptionEs,
+        aliases: exercise.aliases ?? [],
         url: exercise.url,
       },
       { excludeExtraneousValues: true },

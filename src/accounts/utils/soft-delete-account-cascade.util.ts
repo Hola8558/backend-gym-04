@@ -1,5 +1,10 @@
 import { BanStatus, GenericStatus, Prisma } from '@prisma/client';
 
+/**
+ * Soft-deletes a tenant account and all related rows that carry a status field.
+ * Junction / log tables without status stay until the permanent purge cron;
+ * login and reads already ignore soft-deleted parents.
+ */
 export async function softDeleteAccountCascade(
   tx: Prisma.TransactionClient,
   idAccount: number,
@@ -49,6 +54,12 @@ export async function softDeleteAccountCascade(
   await tx.membershipType.updateMany({
     where: { idAccount },
     data: { status: GenericStatus.deleted },
+  });
+
+  // Break coach↔customer links inside the tenant before soft-deleting profiles.
+  await tx.profile.updateMany({
+    where: { user: { idAccount } },
+    data: { idCoach: null },
   });
 
   await tx.profile.updateMany({

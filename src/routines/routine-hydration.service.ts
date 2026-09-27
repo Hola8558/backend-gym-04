@@ -29,7 +29,9 @@ export class RoutineHydrationService {
       select: {
         idExercise: true,
         name: true,
+        nameEs: true,
         description: true,
+        descriptionEs: true,
         url: true,
         muscularGroup: true,
       },
@@ -40,7 +42,9 @@ export class RoutineHydrationService {
       byId[row.idExercise] = {
         id: row.idExercise,
         name: row.name ?? null,
+        name_es: row.nameEs ?? null,
         description: row.description ?? null,
+        description_es: row.descriptionEs ?? null,
         url_image: row.url ?? null,
         muscular_group: row.muscularGroup ?? null,
       };
