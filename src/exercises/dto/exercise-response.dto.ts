@@ -33,6 +33,26 @@ export class ExerciseResponseDto {
   aliases: string[];
 
   @Expose()
+  @ApiProperty({ nullable: true, description: 'snake_case, e.g. olympic_weightlifting' })
+  category: string | null;
+
+  @Expose()
+  @ApiProperty({ nullable: true, description: 'snake_case, e.g. e_z_curl_bar' })
+  equipment: string | null;
+
+  @Expose()
+  @ApiProperty({ nullable: true, description: 'pull | push | static' })
+  force: string | null;
+
+  @Expose()
+  @ApiProperty({ nullable: true, description: 'compound | isolation' })
+  mechanic: string | null;
+
+  @Expose()
+  @ApiProperty({ nullable: true, description: 'beginner | intermediate | expert' })
+  level: string | null;
+
+  @Expose()
   @ApiProperty({ nullable: true })
   url: string | null;
 }

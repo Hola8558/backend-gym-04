@@ -16,6 +16,7 @@ import { catalogMediaFolderCandidates } from './utils/catalog-media-folder-candi
 import { fetchUpstreamExerciseStill } from './utils/fetch-upstream-exercise-still.util';
 import { isCatalogExerciseStillUrl } from './utils/is-catalog-exercise-still-url.util';
 import { normalizeCatalogFolderUrl } from './utils/normalize-catalog-folder-url.util';
+import { normalizeExerciseFacetValue } from './utils/normalize-exercise-facet-value.util';
 
 @Injectable()
 export class ExercisesService {
@@ -32,6 +33,11 @@ export class ExercisesService {
         description: exercise.description,
         description_es: exercise.descriptionEs,
         aliases: exercise.aliases ?? [],
+        category: normalizeExerciseFacetValue(exercise.category),
+        equipment: normalizeExerciseFacetValue(exercise.equipment),
+        force: normalizeExerciseFacetValue(exercise.force),
+        mechanic: normalizeExerciseFacetValue(exercise.mechanic),
+        level: normalizeExerciseFacetValue(exercise.level),
         url: exercise.url,
       },
       { excludeExtraneousValues: true },
