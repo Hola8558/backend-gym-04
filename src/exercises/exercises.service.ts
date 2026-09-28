@@ -15,33 +15,17 @@ import { buildExerciseStillAbsoluteUrl } from './utils/build-exercise-still-abso
 import { catalogMediaFolderCandidates } from './utils/catalog-media-folder-candidates.util';
 import { fetchUpstreamExerciseStill } from './utils/fetch-upstream-exercise-still.util';
 import { isCatalogExerciseStillUrl } from './utils/is-catalog-exercise-still-url.util';
+import { buildExerciseCatalogFields } from './utils/build-exercise-catalog-fields.util';
 import { normalizeCatalogFolderUrl } from './utils/normalize-catalog-folder-url.util';
-import { normalizeExerciseFacetValue } from './utils/normalize-exercise-facet-value.util';
 
 @Injectable()
 export class ExercisesService {
   constructor(private readonly prisma: PrismaService) {}
 
   private toExerciseResponse(exercise: Exercise): ExerciseResponseDto {
-    return plainToInstance(
-      ExerciseResponseDto,
-      {
-        id_exercise: exercise.idExercise,
-        name: exercise.name,
-        name_es: exercise.nameEs,
-        muscular_group: exercise.muscularGroup,
-        description: exercise.description,
-        description_es: exercise.descriptionEs,
-        aliases: exercise.aliases ?? [],
-        category: normalizeExerciseFacetValue(exercise.category),
-        equipment: normalizeExerciseFacetValue(exercise.equipment),
-        force: normalizeExerciseFacetValue(exercise.force),
-        mechanic: normalizeExerciseFacetValue(exercise.mechanic),
-        level: normalizeExerciseFacetValue(exercise.level),
-        url: exercise.url,
-      },
-      { excludeExtraneousValues: true },
-    );
+    return plainToInstance(ExerciseResponseDto, buildExerciseCatalogFields(exercise), {
+      excludeExtraneousValues: true,
+    });
   }
 
   async addFavorite(

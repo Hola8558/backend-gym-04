@@ -1,152 +1,34 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../core/prisma/prisma.service';
-import type { HydratedExercisePayload } from './types/hydrated-exercise-payload.type';
-
-const WEEK_DAY_KEYS = ['Lun', 'Mar', 'Mie', 'Jue', 'Vie', 'Sab', 'Dom'] as const;
+import type { ExerciseCatalogFields } from '../exercises/types/exercise-catalog-fields.type';
+import { buildExerciseCatalogFields } from '../exercises/utils/build-exercise-catalog-fields.util';
+import type { MobileRoutineWeekData } from './types/mobile-routine-week-data.type';
+import { collectRoutineExerciseIds } from './utils/collect-routine-exercise-ids.util';
+import { mapMobileRoutineWeek } from './utils/map-mobile-routine-week.util';
 
 @Injectable()
 export class RoutineHydrationService {
   constructor(private readonly prisma: PrismaService) {}
 
   /**
-   * Parses each routine week JSON blob, loads referenced exercises once, and merges
-   * catalog fields (name, url_image, muscular_group, etc.) flat onto each routine item.
+   * Stored week JSON blobs -> mobile weeks: catalog fields (both languages, aliases,
+   * snake_case facets, media folder url) merged into each exercise, one query for all ids.
    */
-  async hydrateRoutineData(rawRoutineData: unknown[]): Promise<unknown[]> {
-    if (!Array.isArray(rawRoutineData)) {
+  async hydrateRoutineData(rawWeeks: unknown[]): Promise<MobileRoutineWeekData[]> {
+    if (!Array.isArray(rawWeeks)) {
       return [];
     }
 
-    const clonedWeeks = this.deepCloneJson(rawRoutineData) as unknown[];
-    const uniqueIds = this.collectUniqueExerciseIds(clonedWeeks);
+    const ids = collectRoutineExerciseIds(rawWeeks);
+    const exercises =
+      ids.length === 0
+        ? []
+        : await this.prisma.exercise.findMany({ where: { idExercise: { in: ids } } });
 
-    if (uniqueIds.length === 0) {
-      return clonedWeeks;
-    }
+    const catalogById = new Map<number, ExerciseCatalogFields>(
+      exercises.map((exercise) => [exercise.idExercise, buildExerciseCatalogFields(exercise)]),
+    );
 
-    const exercises = await this.prisma.exercise.findMany({
-      where: { idExercise: { in: uniqueIds } },
-      select: {
-        idExercise: true,
-        name: true,
-        nameEs: true,
-        description: true,
-        descriptionEs: true,
-        url: true,
-        muscularGroup: true,
-      },
-    });
-
-    const byId: Record<number, HydratedExercisePayload> = {};
-    for (const row of exercises) {
-      byId[row.idExercise] = {
-        id: row.idExercise,
-        name: row.name ?? null,
-        name_es: row.nameEs ?? null,
-        description: row.description ?? null,
-        description_es: row.descriptionEs ?? null,
-        url_image: row.url ?? null,
-        muscular_group: row.muscularGroup ?? null,
-      };
-    }
-
-    return clonedWeeks.map((weekRoot) => this.hydrateWeekRoot(weekRoot, byId));
-  }
-
-  private hydrateWeekRoot(
-    weekRoot: unknown,
-    byId: Record<number, HydratedExercisePayload>,
-  ): unknown {
-    if (typeof weekRoot !== 'object' || weekRoot === null || Array.isArray(weekRoot)) {
-      return weekRoot;
-    }
-
-    const out = { ...(weekRoot as Record<string, unknown>) };
-
-    for (const dayKey of WEEK_DAY_KEYS) {
-      const dayBlocks = out[dayKey];
-      if (!Array.isArray(dayBlocks)) {
-        continue;
-      }
-
-      out[dayKey] = dayBlocks.map((item) => this.hydrateRoutineItem(item, byId));
-    }
-
-    return out;
-  }
-
-  private hydrateRoutineItem(
-    item: unknown,
-    byId: Record<number, HydratedExercisePayload>,
-  ): unknown {
-    if (!item || typeof item !== 'object' || Array.isArray(item)) {
-      return item;
-    }
-
-    const row = item as Record<string, unknown>;
-    const next = { ...row };
-
-    const exId = next.exercise_id;
-    if (typeof exId === 'number' && Number.isFinite(exId) && Number.isInteger(exId)) {
-      const exerciseData = byId[exId];
-      if (exerciseData) {
-        Object.assign(next, exerciseData);
-        delete next.exercise;
-      }
-    }
-
-    const circuits = next.exercises;
-    if (Array.isArray(circuits)) {
-      next.exercises = circuits.map((sub) => this.hydrateRoutineItem(sub, byId));
-    }
-
-    return next;
-  }
-
-  private collectUniqueExerciseIds(weekRoots: unknown[]): number[] {
-    const set = new Set<number>();
-
-    for (const root of weekRoots) {
-      if (typeof root !== 'object' || root === null || Array.isArray(root)) {
-        continue;
-      }
-
-      const obj = root as Record<string, unknown>;
-
-      for (const dayKey of WEEK_DAY_KEYS) {
-        const dayBlocks = obj[dayKey];
-        if (!Array.isArray(dayBlocks)) continue;
-
-        for (const item of dayBlocks) {
-          this.collectIdsFromRoutineItem(item, set);
-        }
-      }
-    }
-
-    return [...set];
-  }
-
-  private collectIdsFromRoutineItem(item: unknown, into: Set<number>): void {
-    if (!item || typeof item !== 'object' || Array.isArray(item)) {
-      return;
-    }
-
-    const row = item as Record<string, unknown>;
-    const exId = row.exercise_id;
-
-    if (typeof exId === 'number' && Number.isFinite(exId) && Number.isInteger(exId)) {
-      into.add(exId);
-    }
-
-    const circuits = row.exercises;
-    if (Array.isArray(circuits)) {
-      for (const nested of circuits) {
-        this.collectIdsFromRoutineItem(nested, into);
-      }
-    }
-  }
-
-  private deepCloneJson<T>(value: T): T {
-    return structuredClone(value);
+    return rawWeeks.map((rawWeek) => mapMobileRoutineWeek(rawWeek, catalogById));
   }
 }
