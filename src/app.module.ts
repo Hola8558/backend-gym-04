@@ -23,6 +23,7 @@ import { AuthModule } from './auth/auth.module';
 import { JwtAuthGuard } from './auth/jwt-auth.guard';
 import { AccessGuard } from './common/guards/access.guard';
 import { FeatureGuard } from './common/guards/feature.guard';
+import { loadLocalDevModules } from './common/utils/load-local-dev-modules.util';
 import { PrismaModule } from './core/prisma/prisma.module';
 import { MembershipTypesModule } from './membership-types/membership-types.module';
 import { MembershipsModule } from './memberships/memberships.module';
@@ -71,6 +72,7 @@ import { WhatsappModule } from './whatsapp/whatsapp.module';
     DailyTasksModule,
     TasksModule,
     WhatsappModule,
+    ...loadLocalDevModules(),
   ],
   controllers: [AppController],
   providers: [

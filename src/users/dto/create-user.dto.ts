@@ -66,4 +66,10 @@ export class CreateUserDto {
   @ValidateIf((_, v) => v != null && String(v).trim() !== '')
   @IsDateString()
   birthdate?: string;
+
+  /** Calendar day `YYYY-MM-DD`. Omitted values are stored as the current timestamp. */
+  @IsOptional()
+  @ValidateIf((_, v) => v != null && String(v).trim() !== '')
+  @IsDateString()
+  enrollment_date?: string | null;
 }

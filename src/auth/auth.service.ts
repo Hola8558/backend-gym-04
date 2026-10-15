@@ -247,6 +247,7 @@ export class AuthService {
     const active = await this.prisma.customerMembership.findFirst({
       where: {
         idUser: user.idUser,
+        isCurrent: true,
         status: GenericStatus.active,
         OR: [{ endDate: null }, { endDate: { gte: today } }],
       },

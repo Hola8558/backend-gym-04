@@ -21,6 +21,13 @@ import { findNonDeletedUserByEmailInAccount } from './utils/find-non-deleted-use
 import { generateUserNumber } from './utils/generate-user-number.util';
 import type { BulkImportCustomerCoercedRow } from './types/bulk-import-customer-row.type';
 import { resolveBulkImportEmailCandidate } from './utils/resolve-bulk-import-email.util';
+import {
+  assertCustomerMandatoryFields,
+  blankToNull,
+  isBlank,
+  loadMandatoryCustomerFieldIds,
+  parseEnrollmentDate,
+} from './utils/assert-customer-mandatory-fields.util';
 
 /** Masks local part: first 2 chars + 7 asterisks + last char before @ (e.g. cu*******1@gmail.com). */
 function hiddenEmail(email: string | null): string | null {
@@ -147,6 +154,25 @@ export class UsersService {
     }
     const passwordHash = await bcrypt.hash(plainPassword, 10);
 
+    if (dto.role === UserRole.customer) {
+      const mandatory = await loadMandatoryCustomerFieldIds(
+        this.prisma,
+        id_account,
+      );
+      assertCustomerMandatoryFields(mandatory, [
+        { field: 'name', missing: isBlank(dto.name) },
+        { field: 'lastname', missing: isBlank(dto.last_name) },
+        { field: 'email', missing: isBlank(dto.email) },
+        { field: 'phone', missing: isBlank(dto.phone) },
+        { field: 'emergency_phone', missing: isBlank(dto.emergency_phone) },
+        { field: 'birthdate', missing: isBlank(dto.birthdate) },
+        { field: 'enrollment_date', missing: isBlank(dto.enrollment_date) },
+        { field: 'observations', missing: isBlank(dto.observations) },
+        { field: 'coach', missing: dto.coachId == null },
+        { field: 'membership', missing: dto.membershipId == null },
+      ]);
+    }
+
     try {
       const row = await this.prisma.$transaction(async (tx) => {
         await this.checkAccountCapacity(id_account, tx);
@@ -198,11 +224,12 @@ export class UsersService {
         }
 
         const profileCreate: Prisma.ProfileCreateWithoutUserInput = {
-          name: dto.name,
-          lastName: dto.last_name,
-          phone: dto.phone ?? null,
-          emergencyPhone: dto.emergency_phone ?? null,
-          observations: dto.observations ?? null,
+          name: blankToNull(dto.name),
+          lastName: blankToNull(dto.last_name),
+          phone: blankToNull(dto.phone),
+          emergencyPhone: blankToNull(dto.emergency_phone),
+          observations: blankToNull(dto.observations),
+          enrollmentDate: parseEnrollmentDate(dto.enrollment_date) ?? new Date(),
           timeSessionAlive: 7,
           status: GenericStatus.active,
           createdAt: now,
@@ -223,7 +250,7 @@ export class UsersService {
             },
             branch,
             userNumber,
-            email: dto.email,
+            email: blankToNull(dto.email),
             passwordHash,
             role: dto.role,
             status: GenericStatus.active,
@@ -341,6 +368,20 @@ export class UsersService {
     row: BulkImportCustomerCoercedRow,
     current_user_id?: number,
   ): Promise<CreateUserResponse | null> {
+    const mandatory = await loadMandatoryCustomerFieldIds(
+      this.prisma,
+      id_account,
+    );
+    assertCustomerMandatoryFields(mandatory, [
+      { field: 'name', missing: isBlank(row.name) },
+      { field: 'lastname', missing: isBlank(row.lastname) },
+      { field: 'email', missing: isBlank(row.email) },
+      { field: 'phone', missing: isBlank(row.phone) },
+      { field: 'emergency_phone', missing: isBlank(row.emergency_phone) },
+      { field: 'birthdate', missing: row.birthdate == null },
+      { field: 'observations', missing: isBlank(row.observations) },
+    ]);
+
     const maxAttempts = 20;
 
     for (let attempt = 0; attempt < maxAttempts; attempt++) {
@@ -395,6 +436,7 @@ export class UsersService {
         phone: row.phone,
         emergencyPhone: row.emergency_phone,
         observations: row.observations,
+        enrollmentDate: new Date(),
         timeSessionAlive: 7,
         status: GenericStatus.active,
         createdAt: now,

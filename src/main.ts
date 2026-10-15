@@ -7,6 +7,7 @@ import { NestExpressApplication } from '@nestjs/platform-express';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import { raw } from 'express';
 import { STRIPE_WEBHOOK_PATH } from './common/constants/stripe-webhook-path.const';
+import { resolveCorsOrigins } from './common/utils/resolve-cors-origins.util';
 import { AppModule } from './app.module';
 import { PrismaClientExceptionFilter } from './core/filters/prisma-client-exception.filter';
 
@@ -24,12 +25,7 @@ async function bootstrap() {
   app.useBodyParser('urlencoded', { limit: '20mb', extended: true });
 
   app.enableCors({
-    origin: [
-      /^http:\/\/localhost:\d+$/,
-      /^http:\/\/127\.0\.0\.1:\d+$/,
-      'https://technolo-g.mx',
-      'https://www.technolo-g.mx',
-    ],
+    origin: resolveCorsOrigins(),
     methods: ['GET', 'HEAD', 'PUT', 'PATCH', 'POST', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization', 'Stripe-Signature'],
     credentials: true,

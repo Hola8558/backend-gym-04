@@ -26,11 +26,11 @@ export interface DeletedCustomerSource {
       } | null;
     } | null;
   } | null;
-  customerMembership: {
+  customerMemberships: Array<{
     idMembershipType: number;
     status: GenericStatus;
     membershipType: {
       name: string;
     };
-  } | null;
+  }>;
 }

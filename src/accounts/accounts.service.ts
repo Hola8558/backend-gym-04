@@ -14,6 +14,7 @@ import { isSoloCoachAccountType } from '../common/utils/is-solo-coach-account-ty
 import { resolveInitialFeatureFlagStatus } from '../common/utils/resolve-initial-feature-flag-status.util';
 import { PrismaService } from '../core/prisma/prisma.service';
 import { CUSTOMERS_LIMIT_BY_TYPE } from './constants/customers-limit-by-type.const';
+import { DEFAULT_MANDATORY_CUSTOMER_FIELDS } from '../common/constants/customer-form-field-ids.const';
 import { EmailStatusValidationResponseDto } from './dto/email-status-validation-response.dto';
 import { SoftDeleteAccountResponseDto } from './dto/soft-delete-account-response.dto';
 import { StripeBillingService } from './stripe-billing.service';
@@ -95,6 +96,7 @@ export class AccountsService {
           accountDetail: {
             create: {
               customersLimit,
+              mandatoryFields: [...DEFAULT_MANDATORY_CUSTOMER_FIELDS],
               ...(dto.stripeCustomerId
                 ? { stripeCustomerId: dto.stripeCustomerId }
                 : {}),

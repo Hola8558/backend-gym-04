@@ -24,6 +24,7 @@ import { Roles } from '../common/decorators/roles.decorator';
 import { FeatureGuard } from '../common/guards/feature.guard';
 import { RolesGuard } from '../common/guards/roles.guard';
 import { UpdateUserDto } from '../users/dto/update-user.dto';
+import { UpdateCurrentMembershipDto } from './dto/update-current-membership.dto';
 import { BanCustomerDto } from './dto/ban-customer.dto';
 import { BannedCustomerResponseDto } from './dto/banned-customer-response.dto';
 import { CustomerResponseDto } from './dto/customer-response.dto';
@@ -248,6 +249,29 @@ export class CustomersController {
     @Param('id', ParseIntPipe) id: number,
   ) {
     return this.customersService.findOne(id, user.id_account);
+  }
+
+  @Patch(':id/membership')
+  @UseGuards(RolesGuard)
+  @Roles(UserRole.owner, UserRole.solo_coach)
+  @ApiOkResponse({ type: CustomerResponseDto })
+  updateCurrentMembership(
+    @CurrentUser() user: JwtPayload,
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: UpdateCurrentMembershipDto,
+  ) {
+    return this.customersService.updateCurrentMembership(id, user, dto);
+  }
+
+  @Delete(':id/membership')
+  @UseGuards(RolesGuard)
+  @Roles(UserRole.owner, UserRole.solo_coach)
+  @ApiOkResponse({ type: CustomerResponseDto })
+  softDeleteCurrentMembership(
+    @CurrentUser() user: JwtPayload,
+    @Param('id', ParseIntPipe) id: number,
+  ) {
+    return this.customersService.softDeleteCurrentMembership(id, user);
   }
 
   @Patch(':id')

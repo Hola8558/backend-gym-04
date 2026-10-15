@@ -13,9 +13,9 @@ export type BannedBanRowSource = {
       lastName: string | null;
       phone?: string | null;
     } | null;
-    customerMembership: {
+    customerMemberships: Array<{
       idMembershipType: number;
-    } | null;
+    }>;
   };
   coach: {
     profile: {

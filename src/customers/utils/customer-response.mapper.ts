@@ -22,7 +22,7 @@ export function toCustomerResponseDto(
 ): CustomerResponseDto {
   const usesMembershipManagedStatus =
     options?.usesMembershipManagedStatus ?? false;
-  const membership = row.customerMembership;
+  const membership = row.customerMemberships[0] ?? null;
   const displayStatus = resolveCustomerDisplayStatus(
     row.status,
     membership
@@ -42,11 +42,20 @@ export function toCustomerResponseDto(
       birthdate: row.birthdate
         ? new Date(row.birthdate).toISOString().slice(0, 10)
         : null,
+      enrollment_date: row.profile?.enrollmentDate
+        ? new Date(row.profile.enrollmentDate).toISOString()
+        : null,
       phone: row.profile?.phone ?? null,
       emergency_phone: row.profile?.emergencyPhone ?? null,
       observations: row.profile?.observations ?? null,
       activeMembershipName: membership?.membershipType?.name ?? null,
       membership_type_id: membership?.idMembershipType ?? null,
+      membership_start_date: membership?.startDate
+        ? new Date(membership.startDate).toISOString().slice(0, 10)
+        : null,
+      membership_end_date: membership?.endDate
+        ? new Date(membership.endDate).toISOString().slice(0, 10)
+        : null,
       active_routines_count: row.activeRoutinesCount ?? 0,
       assignedCoachName: mapAssignedCoachName(row),
       status: displayStatus,

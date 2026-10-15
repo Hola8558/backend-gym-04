@@ -7,6 +7,9 @@
 .env.*
 !.env.example
 
+# Local-only dev endpoints (loaded by src/common/utils/load-local-dev-modules.util.ts)
+/src/dev-tools/
+
 # Logs
 logs
 *.log

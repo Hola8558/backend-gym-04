@@ -13,6 +13,7 @@ import { membershipRowDatesToAudit } from '../membership-audit/utils/membership-
 import { PrismaService } from '../core/prisma/prisma.service';
 import { AssignMembershipDto } from './dto/assign-membership.dto';
 import { CustomerMembershipResponseDto } from './dto/customer-membership-response.dto';
+import { openNewCurrentCustomerMembership } from './utils/current-customer-membership.util';
 
 @Injectable()
 export class CustomerMembershipsService {
@@ -55,28 +56,17 @@ export class CustomerMembershipsService {
 
     try {
       const dtoResponse = await this.prisma.$transaction(async (tx) => {
-        const existing = await tx.customerMembership.findUnique({
-          where: { idUser: dto.id_user },
+        const opened = await openNewCurrentCustomerMembership(tx, {
+          idAccount,
+          idUser: dto.id_user,
+          idMembershipType: dto.id_membership_type,
+          startDate,
+          endDate,
+          createdAt: now,
         });
-
-        const row = await tx.customerMembership.upsert({
-          where: { idUser: dto.id_user },
-          create: {
-            idAccount,
-            idUser: dto.id_user,
-            idMembershipType: dto.id_membership_type,
-            startDate,
-            endDate,
-            status: GenericStatus.active,
-            createdAt: now,
-          },
-          update: {
-            idAccount,
-            idMembershipType: dto.id_membership_type,
-            startDate,
-            endDate,
-            status: GenericStatus.active,
-          },
+        const existing = opened.previous;
+        const row = await tx.customerMembership.findUniqueOrThrow({
+          where: { idCustomerMembership: opened.created.idCustomerMembership },
           include: { membershipType: true },
         });
 

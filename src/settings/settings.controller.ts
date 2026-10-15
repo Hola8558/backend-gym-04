@@ -21,8 +21,10 @@ import { Roles } from '../common/decorators/roles.decorator';
 import { RolesGuard } from '../common/guards/roles.guard';
 import { AppearanceResponseDto } from './dto/appearance-response.dto';
 import { GetStyleQueryDto } from './dto/get-style-query.dto';
+import { MandatoryFieldsResponseDto } from './dto/mandatory-fields-response.dto';
 import { StyleResponseDto } from './dto/style-response.dto';
 import { UpdateAppearanceDto } from './dto/update-appearance.dto';
+import { UpdateMandatoryFieldsDto } from './dto/update-mandatory-fields.dto';
 import { SettingsService } from './settings.service';
 
 @ApiTags('settings')
@@ -81,6 +83,33 @@ export class SettingsController {
     Logger.log('📤 Sending response back to client', 'SettingsController');
 
     return responsePayload;
+  }
+
+  @Get('mandatory-fields')
+  @ApiOperation({
+    summary: 'Customer form fields that are mandatory for the current account',
+  })
+  @ApiResponse({ status: 200, type: MandatoryFieldsResponseDto })
+  getMandatoryFields(@CurrentUser() user: JwtPayload) {
+    return this.settingsService.getMandatoryFields(user.id_account);
+  }
+
+  @Patch('mandatory-fields')
+  @UseGuards(RolesGuard)
+  @Roles(UserRole.owner, UserRole.solo_coach)
+  @ApiOperation({
+    summary: 'Replace the mandatory customer form fields for the current account',
+  })
+  @ApiResponse({ status: 200, type: MandatoryFieldsResponseDto })
+  updateMandatoryFields(
+    @CurrentUser() user: JwtPayload,
+    @Body() dto: UpdateMandatoryFieldsDto,
+  ) {
+    return this.settingsService.updateMandatoryFields(
+      user.id_account,
+      user.sub,
+      dto,
+    );
   }
 
   @Patch('appearance')

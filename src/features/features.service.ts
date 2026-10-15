@@ -13,6 +13,9 @@ export class FeaturesService {
   /** Solo-coach account setup feature id (parallel to 5003). */
   private static readonly SOLO_COACH_ACCOUNT_SETUP_FEATURE_ID = 5008;
 
+  /** Retired phone-requirement flags. They stay in the catalog table but are not configurable. */
+  private static readonly RETIRED_FEATURE_IDS = new Set([5014, 5015, 5016, 5017]);
+
   constructor(private readonly prisma: PrismaService) {}
 
   async getUserFeatures(userId: number): Promise<UserFeatureResponseDto[]> {
@@ -28,7 +31,9 @@ export class FeaturesService {
       },
     });
 
-    return rows.map((row) => ({
+    return rows
+      .filter((row) => !FeaturesService.RETIRED_FEATURE_IDS.has(row.idFeature))
+      .map((row) => ({
       featureKey: String(row.idFeature),
       value: row.status === GenericStatus.active,
       customizable: row.feature.customizable,

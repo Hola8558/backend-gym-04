@@ -14,6 +14,7 @@ export interface CustomerSource {
     emergencyPhone: string | null;
     observations: string | null;
     createdAt: Date | null;
+    enrollmentDate?: Date | null;
     coach: {
       profile: {
         name: string | null;
@@ -21,14 +22,15 @@ export interface CustomerSource {
       } | null;
     } | null;
   } | null;
-  customerMembership: {
+  customerMemberships: Array<{
     idMembershipType: number;
     status: GenericStatus;
+    startDate: Date;
     endDate: Date | null;
     createdAt: Date;
     membershipType: {
       name: string;
     };
-  } | null;
+  }>;
   activeRoutinesCount?: number;
 }

@@ -1,6 +1,7 @@
 import {
   BadRequestException,
   ConflictException,
+  ForbiddenException,
   Injectable,
   NotFoundException,
   UnauthorizedException,
@@ -31,6 +32,12 @@ import {
 } from '../dashboard/dashboard-metrics-gates';
 import { evaluateDashboardMetricsGates } from '../dashboard/dashboard-metrics-gates';
 import { UpdateUserDto } from '../users/dto/update-user.dto';
+import {
+  assertCustomerMandatoryFields,
+  isBlank,
+  loadMandatoryCustomerFieldIds,
+  parseEnrollmentDate,
+} from '../users/utils/assert-customer-mandatory-fields.util';
 import { SharedUsersService } from '../users/shared-users.service';
 import { BanCustomerDto } from './dto/ban-customer.dto';
 import { BannedCustomerResponseDto } from './dto/banned-customer-response.dto';
@@ -48,6 +55,13 @@ import { CustomerSource } from './types/customer-source.type';
 import { DeletedCustomerSource } from './types/deleted-customer-source.type';
 import { toBannedCustomerResponseDto } from './utils/banned-customer-response.mapper';
 import { accountUsesMembershipManagedCustomerStatus } from './utils/account-uses-membership-managed-customer-status.util';
+import {
+  currentCustomerMembershipRelation,
+  currentCustomerMembershipWhere,
+  openNewCurrentCustomerMembership,
+} from '../customer-memberships/utils/current-customer-membership.util';
+import { assertOwnerOrSoloCoachAccount } from '../common/utils/assert-owner-or-solo-coach-account.util';
+import { UpdateCurrentMembershipDto } from './dto/update-current-membership.dto';
 import {
   buildMembershipManagedActiveCustomerWhere,
   buildMembershipManagedInactiveCustomerWhere,
@@ -84,6 +98,7 @@ const customerSearchSelect = {
       emergencyPhone: true,
       observations: true,
       createdAt: true,
+      enrollmentDate: true,
       coach: {
         select: {
           profile: {
@@ -96,17 +111,16 @@ const customerSearchSelect = {
       },
     },
   },
-  customerMembership: {
-    select: {
-      idMembershipType: true,
-      status: true,
-      endDate: true,
-      createdAt: true,
-      membershipType: {
-        select: { name: true },
-      },
+  customerMemberships: currentCustomerMembershipRelation({
+    idMembershipType: true,
+    status: true,
+    startDate: true,
+    endDate: true,
+    createdAt: true,
+    membershipType: {
+      select: { name: true },
     },
-  },
+  }),
 } as const satisfies Prisma.UserSelect;
 
 const deletedCustomerSelect = {
@@ -135,15 +149,13 @@ const deletedCustomerSelect = {
       },
     },
   },
-  customerMembership: {
-    select: {
-      idMembershipType: true,
-      status: true,
-      membershipType: {
-        select: { name: true },
-      },
+  customerMemberships: currentCustomerMembershipRelation({
+    idMembershipType: true,
+    status: true,
+    membershipType: {
+      select: { name: true },
     },
-  },
+  }),
   deletedBy: {
     select: {
       profile: {
@@ -174,11 +186,9 @@ const bannedBanSelect = {
           phone: true,
         },
       },
-      customerMembership: {
-        select: {
-          idMembershipType: true,
-        },
-      },
+      customerMemberships: currentCustomerMembershipRelation({
+        idMembershipType: true,
+      }),
     },
   },
   coach: {
@@ -445,6 +455,29 @@ export class CustomersService {
     id_account: number,
     dto: UpdateUserDto,
   ): Promise<CustomerResponseDto> {
+    const mandatory = await loadMandatoryCustomerFieldIds(
+      this.prisma,
+      id_account,
+    );
+    assertCustomerMandatoryFields(mandatory, [
+      { field: 'name', missing: isBlank(dto.name) },
+      { field: 'lastname', missing: isBlank(dto.last_name) },
+      { field: 'email', missing: isBlank(dto.email) },
+      { field: 'phone', missing: isBlank(dto.phone) },
+      { field: 'emergency_phone', missing: isBlank(dto.emergency_phone) },
+      {
+        field: 'birthdate',
+        missing: dto.birthdate == null || isBlank(dto.birthdate),
+      },
+      {
+        field: 'enrollment_date',
+        missing:
+          dto.enrollment_date == null || isBlank(dto.enrollment_date),
+      },
+      { field: 'observations', missing: isBlank(dto.observations) },
+      { field: 'coach', missing: dto.coachId == null },
+    ]);
+
     const updated = await this.sharedUsers.updateUser(
       id_user,
       id_account,
@@ -774,12 +807,15 @@ export class CustomersService {
           data: { status: GenericStatus.inactive },
         });
       }
-      const membership = await tx.customerMembership.findUnique({
-        where: { idUser: id_user },
+      const membership = await tx.customerMembership.findFirst({
+        where: {
+          ...currentCustomerMembershipWhere(id_account),
+          idUser: id_user,
+        },
       });
       if (membership) {
         await tx.customerMembership.update({
-          where: { idUser: id_user },
+          where: { idCustomerMembership: membership.idCustomerMembership },
           data: { status: GenericStatus.inactive },
         });
         const { startDate: adStart, endDate: adEnd } = membershipRowDatesToAudit(
@@ -817,8 +853,11 @@ export class CustomersService {
           data: { status: GenericStatus.active },
         });
       }
-      const existingMembership = await tx.customerMembership.findUnique({
-        where: { idUser: id_user },
+      const existingMembership = await tx.customerMembership.findFirst({
+        where: {
+          ...currentCustomerMembershipWhere(id_account),
+          idUser: id_user,
+        },
       });
       if (!existingMembership) {
         throw new BadRequestException(
@@ -826,8 +865,10 @@ export class CustomersService {
         );
       }
       await tx.customerMembership.update({
-        where: { idUser: id_user },
-        data: { status: GenericStatus.active },
+        where: {
+          idCustomerMembership: existingMembership.idCustomerMembership,
+        },
+        data: { status: GenericStatus.active, isCurrent: true },
       });
       const { startDate: adStart, endDate: adEnd } = membershipRowDatesToAudit(
         new Date(existingMembership.startDate),
@@ -894,43 +935,16 @@ export class CustomersService {
       const endDate = addUtcDays(startDate, membershipType.durationDays);
       const now = new Date();
 
-      const priorMembership = await tx.customerMembership.findUnique({
-        where: { idUser: id_user },
+      const opened = await openNewCurrentCustomerMembership(tx, {
+        idAccount: id_account,
+        idUser: id_user,
+        idMembershipType: dto.membershipId!,
+        startDate,
+        endDate,
+        createdAt: now,
       });
-
-      await tx.customerMembership.upsert({
-        where: { idUser: id_user },
-        create: {
-          idAccount: id_account,
-          idUser: id_user,
-          idMembershipType: dto.membershipId!,
-          startDate,
-          endDate,
-          status: GenericStatus.active,
-          createdAt: now,
-        },
-        update: {
-          idAccount: id_account,
-          idMembershipType: dto.membershipId!,
-          startDate,
-          endDate,
-          status: GenericStatus.active,
-        },
-      });
-
-      const nextMembership = await tx.customerMembership.findUnique({
-        where: { idUser: id_user },
-        select: {
-          idCustomerMembership: true,
-          startDate: true,
-          endDate: true,
-          idMembershipType: true,
-          status: true,
-        },
-      });
-      if (!nextMembership) {
-        return;
-      }
+      const priorMembership = opened.previous;
+      const nextMembership = opened.created;
 
       const actionType = !priorMembership
         ? MembershipAction.NEW
@@ -979,8 +993,10 @@ export class CustomersService {
       status: GenericStatus.deleted,
       ...(membershipTypeId !== undefined
         ? {
-            customerMembership: {
-              is: {
+            customerMemberships: {
+              some: {
+                isCurrent: true,
+                status: { not: GenericStatus.deleted },
                 idAccount,
                 idMembershipType: membershipTypeId,
               },
@@ -1143,8 +1159,10 @@ export class CustomersService {
           : {}),
       ...(filters?.membershipId != null
         ? {
-            customerMembership: {
-              is: {
+            customerMemberships: {
+              some: {
+                isCurrent: true,
+                status: { not: GenericStatus.deleted },
                 idAccount,
                 idMembershipType: filters.membershipId,
               },
@@ -1702,8 +1720,9 @@ export class CustomersService {
       idAccount,
       role: UserRole.customer,
       status: { notIn: [GenericStatus.deleted, GenericStatus.banned] },
-      customerMembership: {
-        is: {
+      customerMemberships: {
+        some: {
+          isCurrent: true,
           idAccount,
           status: GenericStatus.active,
           OR: [{ endDate: null }, { endDate: { gte: todayUtcStart } }],
@@ -2105,6 +2124,7 @@ export class CustomersService {
     const rows = await this.prisma.customerMembership.findMany({
       where: {
         idAccount,
+        isCurrent: true,
         status: GenericStatus.active,
         endDate: {
           not: null,
@@ -2158,8 +2178,10 @@ export class CustomersService {
       this.prisma.user.count({
         where: {
           ...baseCustomerWhere,
-          customerMembership: {
-            is: {
+          customerMemberships: {
+            some: {
+              isCurrent: true,
+              status: { not: GenericStatus.deleted },
               idAccount,
               endDate: { not: null, lt: thirtyDaysAgo },
               NOT: {
@@ -2294,25 +2316,37 @@ export class CustomersService {
           idAccount,
           role: UserRole.customer,
           status: GenericStatus.active,
-          customerMembership: { is: { idAccount } },
+          customerMemberships: {
+            some: {
+              isCurrent: true,
+              status: { not: GenericStatus.deleted },
+              idAccount,
+            },
+          },
         },
         select: {
           editAt: true,
           email: true,
           userNumber: true,
           profile: { select: { name: true, lastName: true } },
-          customerMembership: {
-            select: { status: true, endDate: true },
-          },
+          customerMemberships: currentCustomerMembershipRelation({
+            status: true,
+            endDate: true,
+          }),
         },
         take: 50,
       }),
     ]);
 
     const expiredPool: BucketRow[] = activeWithMembership
-      .filter((u) => !this.hasValidCustomerMembershipToday(u.customerMembership, todayStart))
+      .filter((u) =>
+        !this.hasValidCustomerMembershipToday(
+          u.customerMemberships[0] ?? null,
+          todayStart,
+        ),
+      )
       .map((u) => {
-        const m = u.customerMembership;
+        const m = u.customerMemberships[0];
         const inactiveDate =
           m?.endDate !== null && m?.endDate !== undefined
             ? startOfUtcDay(m.endDate as Date)
@@ -2433,8 +2467,9 @@ export class CustomersService {
             createdAt: { lte: twoDaysAgoUtc },
           },
         },
-        customerMembership: {
-          is: {
+        customerMemberships: {
+          some: {
+            isCurrent: true,
             idAccount,
             status: GenericStatus.active,
             OR: [{ endDate: null }, { endDate: { gte: todayUtcStart } }],
@@ -2526,6 +2561,7 @@ export class CustomersService {
     const rows = await this.prisma.customerMembership.findMany({
       where: {
         idAccount,
+        isCurrent: true,
         status: GenericStatus.active,
         OR: [{ endDate: null }, { endDate: { gte: today } }],
         user: {
@@ -2600,6 +2636,220 @@ export class CustomersService {
     }
 
     return byNumber;
+  }
+
+  async updateCurrentMembership(
+    idUser: number,
+    actor: JwtPayload,
+    dto: UpdateCurrentMembershipDto,
+  ): Promise<CustomerResponseDto> {
+    const idAccount = actor.id_account;
+    await assertOwnerOrSoloCoachAccount(
+      this.prisma,
+      idAccount,
+      actor.sub,
+      'CUSTOMERS.DETAILS.ERRORS.MEMBERSHIP_EDIT_FORBIDDEN',
+    );
+
+    const hasStart = !isBlank(dto.start_date);
+    const hasEnd = !isBlank(dto.end_date);
+    const hasType = dto.id_membership_type != null;
+    if (!hasStart && !hasEnd && !hasType) {
+      throw new BadRequestException('CUSTOMERS.DETAILS.ERRORS.INVALID_DATE');
+    }
+
+    await this.prisma.$transaction(async (tx) => {
+      await this.assertEditableCustomer(tx, idUser, idAccount);
+      const current = await tx.customerMembership.findFirst({
+        where: {
+          ...currentCustomerMembershipWhere(idAccount),
+          idUser,
+        },
+        include: {
+          membershipType: { select: { durationDays: true } },
+        },
+      });
+      if (!current) {
+        throw new NotFoundException('CUSTOMERS.DETAILS.ERRORS.NO_MEMBERSHIP');
+      }
+
+      let idMembershipType = current.idMembershipType;
+      let startDate = current.startDate;
+      let endDate = current.endDate;
+
+      if (hasType) {
+        const type = await tx.membershipType.findFirst({
+          where: {
+            idAccount,
+            idMembershipType: dto.id_membership_type,
+            status: { not: GenericStatus.deleted },
+          },
+          select: { idMembershipType: true },
+        });
+        if (!type) {
+          throw new NotFoundException(
+            'CUSTOMERS.DETAILS.ERRORS.MEMBERSHIP_TYPE_NOT_FOUND',
+          );
+        }
+        idMembershipType = type.idMembershipType;
+      }
+
+      if (hasStart) {
+        const parsed = parseEnrollmentDate(dto.start_date);
+        if (!parsed) {
+          throw new BadRequestException(
+            'CUSTOMERS.DETAILS.ERRORS.INVALID_DATE',
+          );
+        }
+        const type = await tx.membershipType.findFirst({
+          where: { idAccount, idMembershipType },
+          select: { durationDays: true },
+        });
+        const duration =
+          type?.durationDays ?? current.membershipType.durationDays;
+        startDate = parsed;
+        endDate = addUtcDays(parsed, duration);
+      } else if (hasEnd) {
+        const parsed = parseEnrollmentDate(dto.end_date);
+        if (!parsed) {
+          throw new BadRequestException(
+            'CUSTOMERS.DETAILS.ERRORS.INVALID_DATE',
+          );
+        }
+        endDate = parsed;
+      }
+
+      const today = startOfUtcDay(new Date());
+      const status =
+        endDate == null || endDate >= today
+          ? GenericStatus.active
+          : GenericStatus.inactive;
+
+      await tx.customerMembership.update({
+        where: { idCustomerMembership: current.idCustomerMembership },
+        data: { idMembershipType, startDate, endDate, status },
+      });
+
+      const { startDate: adStart, endDate: adEnd } = membershipRowDatesToAudit(
+        new Date(startDate),
+        endDate != null ? new Date(endDate) : null,
+      );
+      const typeChanged =
+        hasType && dto.id_membership_type !== current.idMembershipType;
+      await this.membershipAuditService.logMovement(
+        {
+          idAccount,
+          idUser,
+          idNewMembership: current.idCustomerMembership,
+          idOldMembership: current.idCustomerMembership,
+          actionType: typeChanged
+            ? MembershipAction.CHANGE
+            : MembershipAction.RENEWAL,
+          startDate: adStart,
+          endDate: adEnd,
+        },
+        tx,
+      );
+    });
+
+    return this.findOne(idUser, idAccount);
+  }
+
+  async softDeleteCurrentMembership(
+    idUser: number,
+    actor: JwtPayload,
+  ): Promise<CustomerResponseDto> {
+    const idAccount = actor.id_account;
+    await assertOwnerOrSoloCoachAccount(
+      this.prisma,
+      idAccount,
+      actor.sub,
+      'CUSTOMERS.DETAILS.ERRORS.MEMBERSHIP_EDIT_FORBIDDEN',
+    );
+
+    await this.prisma.$transaction(async (tx) => {
+      await this.assertEditableCustomer(tx, idUser, idAccount);
+      const current = await tx.customerMembership.findFirst({
+        where: {
+          ...currentCustomerMembershipWhere(idAccount),
+          idUser,
+        },
+      });
+      if (!current) {
+        throw new NotFoundException('CUSTOMERS.DETAILS.ERRORS.NO_MEMBERSHIP');
+      }
+
+      await tx.customerMembership.update({
+        where: { idCustomerMembership: current.idCustomerMembership },
+        data: {
+          status: GenericStatus.deleted,
+          isCurrent: false,
+        },
+      });
+
+      const previous = await tx.customerMembership.findFirst({
+        where: {
+          idUser,
+          idAccount,
+          status: { not: GenericStatus.deleted },
+        },
+        orderBy: [
+          { createdAt: 'desc' },
+          { idCustomerMembership: 'desc' },
+        ],
+      });
+
+      if (previous) {
+        const today = startOfUtcDay(new Date());
+        const stillValid =
+          previous.endDate == null || previous.endDate >= today;
+        await tx.customerMembership.update({
+          where: { idCustomerMembership: previous.idCustomerMembership },
+          data: {
+            isCurrent: true,
+            status: stillValid ? GenericStatus.active : GenericStatus.inactive,
+          },
+        });
+      }
+
+      const { startDate: adStart, endDate: adEnd } = membershipRowDatesToAudit(
+        new Date(current.startDate),
+        current.endDate != null ? new Date(current.endDate) : null,
+      );
+      await this.membershipAuditService.logMovement(
+        {
+          idAccount,
+          idUser,
+          idNewMembership: current.idCustomerMembership,
+          idOldMembership: current.idCustomerMembership,
+          actionType: MembershipAction.CANCELLATION,
+          startDate: adStart,
+          endDate: adEnd,
+        },
+        tx,
+      );
+    });
+
+    return this.findOne(idUser, idAccount);
+  }
+
+  private async assertEditableCustomer(
+    tx: Prisma.TransactionClient,
+    idUser: number,
+    idAccount: number,
+  ): Promise<void> {
+    const customer = await tx.user.findFirst({
+      where: {
+        idUser,
+        idAccount,
+        role: UserRole.customer,
+        status: { not: GenericStatus.deleted },
+      },
+      select: { idUser: true },
+    });
+    if (!customer) {
+      throw new NotFoundException('CUSTOMERS.ERRORS.CUSTOMER_NOT_FOUND');
+    }
   }
 
   private static customerDisplayName(

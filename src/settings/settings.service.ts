@@ -16,6 +16,11 @@ import { StyleResponseDto } from './dto/style-response.dto';
 import { GetStyleQueryDto } from './dto/get-style-query.dto';
 import { generateChangeKey } from './utils/generate-change-key.util';
 import { buildConditionalStyleRecord } from './utils/build-conditional-style-response.util';
+import { normalizeMandatoryCustomerFields } from '../common/constants/customer-form-field-ids.const';
+import { MandatoryFieldsResponseDto } from './dto/mandatory-fields-response.dto';
+import { UpdateMandatoryFieldsDto } from './dto/update-mandatory-fields.dto';
+import { toMandatoryFieldsResponseDto } from './utils/mandatory-fields-response.mapper';
+import { assertMandatoryFieldsManager } from './utils/assert-mandatory-fields-manager.util';
 
 const ENTRY_LOGS_FEATURE_ID = 5001;
 
@@ -230,6 +235,43 @@ export class SettingsService {
     });
 
     return this.toResponse(updated);
+  }
+
+  async getMandatoryFields(
+    idAccount: number,
+  ): Promise<MandatoryFieldsResponseDto> {
+    const detail = await this.prisma.accountDetail.findUnique({
+      where: { idAccount },
+      select: { mandatoryFields: true },
+    });
+    if (!detail) {
+      throw new NotFoundException('SETTINGS.ERRORS.ACCOUNT_NOT_FOUND');
+    }
+    return toMandatoryFieldsResponseDto(detail.mandatoryFields);
+  }
+
+  async updateMandatoryFields(
+    idAccount: number,
+    idUser: number,
+    dto: UpdateMandatoryFieldsDto,
+  ): Promise<MandatoryFieldsResponseDto> {
+    await assertMandatoryFieldsManager(this.prisma, idAccount, idUser);
+
+    const detail = await this.prisma.accountDetail.findUnique({
+      where: { idAccount },
+      select: { idAccountDetail: true },
+    });
+    if (!detail) {
+      throw new NotFoundException('SETTINGS.ERRORS.ACCOUNT_NOT_FOUND');
+    }
+
+    const mandatoryFields = normalizeMandatoryCustomerFields(dto.mandatory_fields);
+    const updated = await this.prisma.accountDetail.update({
+      where: { idAccountDetail: detail.idAccountDetail },
+      data: { mandatoryFields },
+      select: { mandatoryFields: true },
+    });
+    return toMandatoryFieldsResponseDto(updated.mandatoryFields);
   }
 
   private toResponse(record: AppearanceRecord): AppearanceResponseDto {

@@ -48,7 +48,19 @@ export class CustomerResponseDto {
 
   @Expose()
   @ApiPropertyOptional({ nullable: true, type: String, format: 'date' })
+  membership_start_date: string | null;
+
+  @Expose()
+  @ApiPropertyOptional({ nullable: true, type: String, format: 'date' })
+  membership_end_date: string | null;
+
+  @Expose()
+  @ApiPropertyOptional({ nullable: true, type: String, format: 'date' })
   birthdate: string | null;
+
+  @Expose()
+  @ApiPropertyOptional({ nullable: true, type: String, format: 'date-time' })
+  enrollment_date: string | null;
 
   @Expose()
   @ApiProperty()

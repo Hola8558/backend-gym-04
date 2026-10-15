@@ -10,6 +10,7 @@ import {
 
 export class UpdateUserDto {
   @IsOptional()
+  @ValidateIf((_, value) => value != null && String(value).trim() !== '')
   @IsEmail()
   email?: string;
 
@@ -52,4 +53,10 @@ export class UpdateUserDto {
   @ValidateIf((_, v) => v !== null && v !== undefined && String(v).trim() !== '')
   @IsDateString()
   birthdate?: string | null;
+
+  /** Omit to leave unchanged; send `null` or empty string to clear. */
+  @IsOptional()
+  @ValidateIf((_, v) => v !== null && v !== undefined && String(v).trim() !== '')
+  @IsDateString()
+  enrollment_date?: string | null;
 }

@@ -3,6 +3,7 @@ import { GenericStatus, Prisma, UserRole } from '@prisma/client';
 import { plainToInstance } from 'class-transformer';
 import type { JwtPayload } from '../auth/jwt.strategy';
 import { PrismaService } from '../core/prisma/prisma.service';
+import { ENTRY_LOG_RETENTION_DAYS } from '../common/constants/entry-log-retention-days.const';
 import { subUtcDays } from '../common/utils/utc-date.util';
 import { CustomerAccessLogItemDto } from './dto/customer-access-log-item.dto';
 import { CustomerAccessSummaryResponseDto } from './dto/customer-access-summary-response.dto';
@@ -21,7 +22,7 @@ import {
   parseCheckinDateTime,
 } from './utils/parse-checkin-datetime.util';
 
-const HISTORY_WINDOW_DAYS = 30;
+const HISTORY_WINDOW_DAYS = ENTRY_LOG_RETENTION_DAYS;
 
 type HistorySortField =
   | 'entryDate'
@@ -272,7 +273,13 @@ export class EntryLogsService {
       },
       include: {
         profile: true,
-        customerMembership: {
+        customerMemberships: {
+          where: {
+            isCurrent: true,
+            status: { not: GenericStatus.deleted },
+          },
+          orderBy: [{ createdAt: 'desc' }, { idCustomerMembership: 'desc' }],
+          take: 1,
           include: { membershipType: true },
         },
       },
@@ -293,7 +300,7 @@ export class EntryLogsService {
       select: { idEntryLog: true, entryDate: true },
     });
 
-    const membership = user.customerMembership;
+    const membership = user.customerMemberships[0] ?? null;
     const planName =
       membership?.membershipType?.status === GenericStatus.deleted
         ? null

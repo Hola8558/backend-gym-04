@@ -14,7 +14,12 @@ import { MembershipAction } from '../membership-audit/types/membership-action.co
 import { membershipRowDatesToAudit } from '../membership-audit/utils/membership-history-date.util';
 import { PrismaService } from '../core/prisma/prisma.service';
 import { UpdateUserDto } from './dto/update-user.dto';
+import {
+  blankToNull,
+  parseEnrollmentDate,
+} from './utils/assert-customer-mandatory-fields.util';
 import { findNonDeletedUserByEmailInAccount } from './utils/find-non-deleted-user-by-email-in-account.util';
+import { openNewCurrentCustomerMembership } from '../customer-memberships/utils/current-customer-membership.util';
 
 function tenantRoleWhere(id_account: number, role: UserRole) {
   return {
@@ -71,7 +76,7 @@ export class SharedUsersService {
     const data: Prisma.UserUpdateInput = {};
 
     if (dto.email !== undefined) {
-      data.email = dto.email;
+      data.email = blankToNull(dto.email);
     }
     if (dto.branch !== undefined) {
       data.branch = dto.branch;
@@ -93,19 +98,22 @@ export class SharedUsersService {
 
     const profileUpdate: Prisma.ProfileUpdateWithoutUserInput = {};
     if (dto.name !== undefined) {
-      profileUpdate.name = dto.name;
+      profileUpdate.name = blankToNull(dto.name);
     }
     if (dto.last_name !== undefined) {
-      profileUpdate.lastName = dto.last_name;
+      profileUpdate.lastName = blankToNull(dto.last_name);
     }
     if (dto.phone !== undefined) {
-      profileUpdate.phone = dto.phone;
+      profileUpdate.phone = blankToNull(dto.phone);
     }
     if (dto.emergency_phone !== undefined) {
-      profileUpdate.emergencyPhone = dto.emergency_phone;
+      profileUpdate.emergencyPhone = blankToNull(dto.emergency_phone);
     }
     if (dto.observations !== undefined) {
-      profileUpdate.observations = dto.observations;
+      profileUpdate.observations = blankToNull(dto.observations);
+    }
+    if (dto.enrollment_date !== undefined) {
+      profileUpdate.enrollmentDate = parseEnrollmentDate(dto.enrollment_date);
     }
     if (role === UserRole.customer && dto.coachId !== undefined) {
       profileUpdate.coach = { connect: { idUser: dto.coachId } };
@@ -144,48 +152,16 @@ export class SharedUsersService {
     const endDate = addUtcDays(startDate, membershipType.durationDays);
     const now = new Date();
 
-    const existing = await tx.customerMembership.findUnique({
-      where: { idUser },
+    const opened = await openNewCurrentCustomerMembership(tx, {
+      idAccount,
+      idUser,
+      idMembershipType,
+      startDate,
+      endDate,
+      createdAt: now,
     });
-
-    if (existing) {
-      await tx.customerMembership.update({
-        where: { idCustomerMembership: existing.idCustomerMembership },
-        data: {
-          idAccount,
-          idMembershipType,
-          startDate,
-          endDate,
-          status: GenericStatus.active,
-        },
-      });
-    } else {
-      await tx.customerMembership.create({
-        data: {
-          idAccount,
-          idUser,
-          idMembershipType,
-          startDate,
-          endDate,
-          status: GenericStatus.active,
-          createdAt: now,
-        },
-      });
-    }
-
-    const after = await tx.customerMembership.findUnique({
-      where: { idUser },
-      select: {
-        idCustomerMembership: true,
-        startDate: true,
-        endDate: true,
-        idMembershipType: true,
-        status: true,
-      },
-    });
-    if (!after) {
-      return;
-    }
+    const existing = opened.previous;
+    const after = opened.created;
 
     if (!existing) {
       const { startDate: adStart, endDate: adEnd } = membershipRowDatesToAudit(

@@ -18,5 +18,6 @@ import { StripeWebhookService } from './stripe-webhook.service';
     RolesGuard,
     EmailStatusOriginGuard,
   ],
+  exports: [AccountsService],
 })
 export class AccountsModule {}

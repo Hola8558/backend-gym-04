@@ -34,6 +34,8 @@ export class CustomersMembershipService {
       where: {
         idUser,
         idAccount,
+        isCurrent: true,
+        status: { not: GenericStatus.deleted },
       },
       select: {
         startDate: true,

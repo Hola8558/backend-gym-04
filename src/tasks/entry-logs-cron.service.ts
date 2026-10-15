@@ -2,11 +2,11 @@ import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { AccountType, CrowdmeterDay, GenericStatus } from '@prisma/client';
 import { PrismaService } from '../core/prisma/prisma.service';
+import { ENTRY_LOG_RETENTION_DAYS as RETENTION_DAYS } from '../common/constants/entry-log-retention-days.const';
 import { subUtcDays } from '../common/utils/utc-date.util';
 import { buildCrowdmeterData } from './utils/crowdmeter-bucket.util';
 import { getCrowdmeterDayForDate } from './utils/crowdmeter-day.util';
 
-const RETENTION_DAYS = 30;
 const LIVE_WINDOW_MINUTES = 75;
 const LIVE_STALE_MINUTES = 15;
 const EVERY_15_MINUTES = '0 */15 * * * *';

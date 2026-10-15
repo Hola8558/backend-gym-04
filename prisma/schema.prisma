@@ -128,6 +128,7 @@ model AccountDetail {
   menuTemplate    String?   @map("menu_template") @db.Text
   routineTemplate String?   @map("routine_template") @db.Text
   stripeCustomerId String?  @map("stripe_customer_id") @db.Text
+  mandatoryFields  String[] @default(["phone", "emergency_phone", "name", "email", "lastname", "enrollment_date"]) @map("mandatory_fields")
 
   account Account @relation(fields: [idAccount], references: [idAccount], onDelete: Cascade)
 
@@ -151,7 +152,7 @@ model User {
 
   account             Account             @relation(fields: [idAccount], references: [idAccount])
   profile             Profile?
-  customerMembership  CustomerMembership?
+  customerMemberships CustomerMembership[]
   membershipHistories MembershipHistory[]
   routines            Routine[]
   entryLogs           EntryLog[]
@@ -168,6 +169,7 @@ model User {
   /// Uniqueness for non-null emails per account is enforced by a partial DB index
   /// (see migration `soft_delete_email_unique_partial`) — deleted rows are excluded.
   @@index([email, idAccount])
+  @@index([idAccount, role, status])
   @@map("users")
 }
 
@@ -179,6 +181,7 @@ model Profile {
   phone            String?       @map("phone")
   emergencyPhone   String?       @map("emergency_phone")
   observations     String?       @map("observations") @db.Text
+  enrollmentDate   DateTime?     @default(now()) @map("enrollment_date")
   timeSessionAlive Int           @default(7) @map("time_session_alive")
   createdAt        DateTime      @map("created_at")
   status           GenericStatus @map("status")
@@ -211,12 +214,14 @@ model MembershipType {
 model CustomerMembership {
   idCustomerMembership Int           @id @default(autoincrement()) @map("id_customer_membership")
   idAccount            Int           @map("id_account")
-  idUser               Int           @unique @map("id_user")
+  idUser               Int           @map("id_user")
   idMembershipType     Int           @map("id_membership_type")
   startDate            DateTime      @map("start_date") @db.Date
   endDate              DateTime?     @map("end_date") @db.Date
   createdAt            DateTime      @map("created_at")
   status               GenericStatus @map("status")
+  /// One non-deleted current row per user. Older rows stay so a soft delete can roll back.
+  isCurrent            Boolean       @default(true) @map("is_current")
 
   account                  Account             @relation(fields: [idAccount], references: [idAccount])
   user                     User                @relation(fields: [idUser], references: [idUser])
@@ -224,6 +229,8 @@ model CustomerMembership {
   membershipHistoriesAsNew MembershipHistory[] @relation("MembershipHistoryAsNew")
   membershipHistoriesAsOld MembershipHistory[] @relation("MembershipHistoryAsOld")
 
+  @@index([idUser, isCurrent])
+  @@index([idAccount, status])
   @@map("customer_memberships")
 }
 

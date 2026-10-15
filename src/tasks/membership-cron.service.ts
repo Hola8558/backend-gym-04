@@ -38,6 +38,7 @@ export class MembershipCronService {
     const now = new Date();
     const result = await this.prisma.customerMembership.updateMany({
       where: {
+        isCurrent: true,
         status: GenericStatus.active,
         endDate: { lt: now },
         account: { status: { not: GenericStatus.deleted } },

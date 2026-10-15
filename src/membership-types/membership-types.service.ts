@@ -101,6 +101,7 @@ export class MembershipTypesService {
       where: {
         idAccount,
         idMembershipType,
+        isCurrent: true,
         status: GenericStatus.active,
       },
     });

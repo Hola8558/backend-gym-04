@@ -22,7 +22,7 @@ export function toBannedCustomerResponseDto(
   const bannedAt = row.createdAt.toISOString();
   const bannedBy = formatPersonName(row.coach.profile);
   const membership_type_id =
-    c.customerMembership?.idMembershipType ?? null;
+    c.customerMemberships[0]?.idMembershipType ?? null;
 
   const dto: BannedCustomerResponseDto = {
     idBan: row.idBan,

@@ -25,6 +25,9 @@ export class UsersController {
       {
         ...dto,
         role: UserRole.customer,
+        email: dto.email ?? '',
+        name: dto.name ?? '',
+        last_name: dto.last_name ?? '',
       },
       user.id_account,
       user.sub,

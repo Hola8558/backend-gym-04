@@ -30,8 +30,8 @@ export function toDeletedCustomerResponseDto(
       phone: row.profile?.phone ?? null,
       emergency_phone: row.profile?.emergencyPhone ?? null,
       activeMembershipName:
-        row.customerMembership?.membershipType?.name ?? null,
-      membership_type_id: row.customerMembership?.idMembershipType ?? null,
+        row.customerMemberships[0]?.membershipType?.name ?? null,
+      membership_type_id: row.customerMemberships[0]?.idMembershipType ?? null,
       deleted_at: row.editAt.toISOString(),
       deletedBy: formatDeletedByName(row.deletedBy),
       status: row.status,
