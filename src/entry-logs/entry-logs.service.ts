@@ -6,6 +6,7 @@ import { PrismaService } from '../core/prisma/prisma.service';
 import { ENTRY_LOG_RETENTION_DAYS } from '../common/constants/entry-log-retention-days.const';
 import { subUtcDays } from '../common/utils/utc-date.util';
 import { CustomerAccessLogItemDto } from './dto/customer-access-log-item.dto';
+import { CustomerAccessMembershipSpanDto } from './dto/customer-access-membership-span.dto';
 import { CustomerAccessSummaryResponseDto } from './dto/customer-access-summary-response.dto';
 import { EntryLogHistoryRowDto } from './dto/entry-log-history-row.dto';
 import type { EntryLogListQueryDto } from './dto/entry-log-list-query.dto';
@@ -289,6 +290,16 @@ export class EntryLogsService {
       throw new NotFoundException('ENTRY_LOGS.ERRORS.USER_NOT_FOUND');
     }
 
+    const membershipRows = await this.prisma.customerMembership.findMany({
+      where: {
+        idUser,
+        idAccount,
+        status: { not: GenericStatus.deleted },
+      },
+      select: { startDate: true, endDate: true },
+      orderBy: [{ startDate: 'asc' }, { idCustomerMembership: 'asc' }],
+    });
+
     const logs = await this.prisma.entryLog.findMany({
       where: {
         idAccount,
@@ -314,6 +325,20 @@ export class EntryLogsService {
       ),
     );
 
+    const memberships = membershipRows.map((row) =>
+      plainToInstance(
+        CustomerAccessMembershipSpanDto,
+        {
+          start_date: new Date(row.startDate).toISOString().slice(0, 10),
+          end_date:
+            row.endDate != null
+              ? new Date(row.endDate).toISOString().slice(0, 10)
+              : null,
+        },
+        { excludeExtraneousValues: true },
+      ),
+    );
+
     return plainToInstance(
       CustomerAccessSummaryResponseDto,
       {
@@ -324,6 +349,7 @@ export class EntryLogsService {
         membershipPlanName: planName,
         membershipStatus: membership?.status ?? null,
         entries,
+        memberships,
       },
       { excludeExtraneousValues: true },
     );

@@ -33,6 +33,7 @@ import { LoginCustomerDto } from './dto/login-customer.dto';
 import { RecoverCustomerDto } from './dto/recover-customer.dto';
 import { UnbanCustomerDto } from './dto/unban-customer.dto';
 import { CustomerBanHistoryEntryDto } from './dto/customer-ban-history-entry.dto';
+import { CustomerListFocusQueryDto } from './dto/customer-list-focus-query.dto';
 import { ListCustomersQueryDto } from './dto/list-customers-query.dto';
 import { DashboardMetricsResponseDto } from './dto/dashboard-metrics-response.dto';
 import { MobileCustomerLoginResponseDto } from './dto/mobile-customer-login-response.dto';
@@ -180,6 +181,23 @@ export class CustomersController {
       page,
       limit,
       listFilters,
+    );
+  }
+
+  /** Must be registered before `@Get(':id')`. */
+  @Get('list-focus')
+  @UseGuards(RolesGuard, FeatureGuard)
+  @Roles(UserRole.owner, UserRole.coach, UserRole.solo_coach)
+  @RequireFeature(...CUSTOMER_READ_FEATURES)
+  listFocus(
+    @CurrentUser() user: JwtPayload,
+    @Query() query: CustomerListFocusQueryDto,
+  ) {
+    return this.customersService.resolveListFocusPage(
+      user.id_account,
+      query.kind,
+      query.id_user,
+      query.limit ?? 50,
     );
   }
 

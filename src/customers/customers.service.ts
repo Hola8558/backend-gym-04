@@ -527,7 +527,7 @@ export class CustomersService {
       this.prisma.user.findMany({
         where,
         select: deletedCustomerSelect,
-        orderBy: { editAt: 'desc' },
+        orderBy: [{ editAt: 'desc' }, { idUser: 'desc' }],
         skip,
         take,
       }),
@@ -557,7 +557,7 @@ export class CustomersService {
       this.prisma.customerBan.findMany({
         where,
         select: bannedBanSelect,
-        orderBy: { createdAt: 'desc' },
+        orderBy: [{ createdAt: 'desc' }, { idBan: 'desc' }],
         skip,
         take,
       }),
@@ -570,6 +570,92 @@ export class CustomersService {
       ),
       total,
     };
+  }
+
+  /**
+   * 1-based page that contains `idUser` in the same order as the customers table
+   * for that kind (expired = active list filtered to inactive memberships).
+   */
+  async resolveListFocusPage(
+    idAccount: number,
+    kind: 'expired' | 'deleted' | 'banned',
+    idUser: number,
+    limit = 50,
+  ): Promise<{ page: number }> {
+    const take = Math.max(Number(limit) || 50, 1);
+    let before = 0;
+
+    if (kind === 'expired') {
+      const usesMembershipManagedStatus =
+        await accountUsesMembershipManagedCustomerStatus(this.prisma, idAccount);
+      const where = this.buildCustomerWhere(
+        idAccount,
+        '',
+        { status: 'INACTIVE' },
+        usesMembershipManagedStatus,
+      );
+      const matches = await this.prisma.user.count({
+        where: { AND: [where, { idUser }] },
+      });
+      if (matches === 0) {
+        return { page: 1 };
+      }
+      before = await this.prisma.user.count({
+        where: { AND: [where, { idUser: { lt: idUser } }] },
+      });
+    } else if (kind === 'deleted') {
+      const target = await this.prisma.user.findFirst({
+        where: {
+          idUser,
+          idAccount,
+          role: UserRole.customer,
+          status: GenericStatus.deleted,
+        },
+        select: { idUser: true, editAt: true },
+      });
+      if (!target) {
+        return { page: 1 };
+      }
+      const where = this.buildDeletedCustomerWhere(idAccount, '');
+      before = await this.prisma.user.count({
+        where: {
+          AND: [
+            where,
+            {
+              OR: [
+                { editAt: { gt: target.editAt } },
+                { editAt: target.editAt, idUser: { gt: target.idUser } },
+              ],
+            },
+          ],
+        },
+      });
+    } else {
+      const ban = await this.prisma.customerBan.findFirst({
+        where: { idAccount, idCustomer: idUser },
+        orderBy: [{ createdAt: 'desc' }, { idBan: 'desc' }],
+        select: { idBan: true, createdAt: true },
+      });
+      if (!ban) {
+        return { page: 1 };
+      }
+      const where = this.buildBannedBanWhere(idAccount, '');
+      before = await this.prisma.customerBan.count({
+        where: {
+          AND: [
+            where,
+            {
+              OR: [
+                { createdAt: { gt: ban.createdAt } },
+                { createdAt: ban.createdAt, idBan: { gt: ban.idBan } },
+              ],
+            },
+          ],
+        },
+      });
+    }
+
+    return { page: Math.floor(before / take) + 1 };
   }
 
   async getCustomerBanHistory(
@@ -1295,7 +1381,11 @@ export class CustomersService {
     sign_up_trend_full_year: { month_start: string; count: number }[];
     membership_distribution: { name: string; value: number }[] | null;
     expiring_soon: { name: string; days_until_end: number }[] | null;
-    inactive_customers: { name: string; chip_status: 'deleted' | 'banned' | 'expired' }[];
+    inactive_customers: {
+      id_user: number;
+      name: string;
+      chip_status: 'deleted' | 'banned' | 'expired';
+    }[];
     birthdays_this_month: { name: string; birthdate: string; is_today: boolean }[];
     cancellation_rate_percent: number | null;
     loyalty_ranking: { name: string; description: string }[] | null;
@@ -1438,7 +1528,11 @@ export class CustomersService {
     active_members_count: number;
     new_customers_last_30_days: number;
     sign_up_trend_full_year: { month_start: string; count: number }[];
-    inactive_customers: { name: string; chip_status: 'deleted' | 'banned' | 'expired' }[];
+    inactive_customers: {
+      id_user: number;
+      name: string;
+      chip_status: 'deleted' | 'banned' | 'expired';
+    }[];
     birthdays_this_month: { name: string; birthdate: string; is_today: boolean }[];
     memberships: {
       renewals_last_30_days: number;
@@ -1807,7 +1901,11 @@ export class CustomersService {
    */
   private async computeSoloCoachInactiveCustomersProfileOnly(
     idAccount: number,
-  ): Promise<{ name: string; chip_status: 'deleted' | 'banned' | 'expired' }[]> {
+  ): Promise<{
+    id_user: number;
+    name: string;
+    chip_status: 'deleted' | 'banned' | 'expired';
+  }[]> {
     const [deletedRows, bannedRows] = await Promise.all([
       this.prisma.user.findMany({
         where: {
@@ -1816,6 +1914,7 @@ export class CustomersService {
           status: GenericStatus.deleted,
         },
         select: {
+          idUser: true,
           editAt: true,
           email: true,
           userNumber: true,
@@ -1831,6 +1930,7 @@ export class CustomersService {
           status: GenericStatus.banned,
         },
         select: {
+          idUser: true,
           editAt: true,
           email: true,
           userNumber: true,
@@ -1842,6 +1942,7 @@ export class CustomersService {
     ]);
 
     const deletedPool = deletedRows.map((u) => ({
+      id_user: u.idUser,
       name: this.formatDashboardListCustomerName({
         email: u.email,
         userNumber: u.userNumber,
@@ -1852,6 +1953,7 @@ export class CustomersService {
     }));
 
     const bannedPool = bannedRows.map((u) => ({
+      id_user: u.idUser,
       name: this.formatDashboardListCustomerName({
         email: u.email,
         userNumber: u.userNumber,
@@ -1865,7 +1967,11 @@ export class CustomersService {
       .sort((a, b) => b.inactiveDate.getTime() - a.inactiveDate.getTime())
       .slice(0, 6);
 
-    return merged.map(({ name, chip_status }) => ({ name, chip_status }));
+    return merged.map(({ id_user, name, chip_status }) => ({
+      id_user,
+      name,
+      chip_status,
+    }));
   }
 
   private serverLocalMonthDay(): { month: number; day: number } {
@@ -2273,8 +2379,13 @@ export class CustomersService {
   private async computeInactiveDashboardCustomers(
     idAccount: number,
     todayStart: Date,
-  ): Promise<{ name: string; chip_status: 'deleted' | 'banned' | 'expired' }[]> {
+  ): Promise<{
+    id_user: number;
+    name: string;
+    chip_status: 'deleted' | 'banned' | 'expired';
+  }[]> {
     type BucketRow = {
+      id_user: number;
       name: string;
       chip_status: 'deleted' | 'banned' | 'expired';
       inactiveDate: Date;
@@ -2288,6 +2399,7 @@ export class CustomersService {
           status: GenericStatus.deleted,
         },
         select: {
+          idUser: true,
           editAt: true,
           email: true,
           userNumber: true,
@@ -2303,6 +2415,7 @@ export class CustomersService {
           status: GenericStatus.banned,
         },
         select: {
+          idUser: true,
           editAt: true,
           email: true,
           userNumber: true,
@@ -2325,6 +2438,7 @@ export class CustomersService {
           },
         },
         select: {
+          idUser: true,
           editAt: true,
           email: true,
           userNumber: true,
@@ -2352,6 +2466,7 @@ export class CustomersService {
             ? startOfUtcDay(m.endDate as Date)
             : startOfUtcDay(u.editAt);
         return {
+          id_user: u.idUser,
           name: this.formatDashboardListCustomerName({
             email: u.email,
             userNumber: u.userNumber,
@@ -2365,6 +2480,7 @@ export class CustomersService {
       .slice(0, 6);
 
     const deletedPool: BucketRow[] = deletedRows.map((u) => ({
+      id_user: u.idUser,
       name: this.formatDashboardListCustomerName({
         email: u.email,
         userNumber: u.userNumber,
@@ -2375,6 +2491,7 @@ export class CustomersService {
     }));
 
     const bannedPool: BucketRow[] = bannedRows.map((u) => ({
+      id_user: u.idUser,
       name: this.formatDashboardListCustomerName({
         email: u.email,
         userNumber: u.userNumber,
@@ -2399,22 +2516,26 @@ export class CustomersService {
       finalSelection.push(leftovers.shift()!);
     }
 
-    return this.interleaveInactiveDashboardRows(finalSelection);
+    return this.interleaveInactiveDashboardRows(finalSelection).map((row) => ({
+      id_user: row.id_user,
+      name: row.name,
+      chip_status: row.chip_status,
+    }));
   }
 
   /**
    * Reorders rows in expired → deleted → banned cycles so pages are mixed (no status clumping).
    */
-  private interleaveInactiveDashboardRows(
-    rows: { name: string; chip_status: 'deleted' | 'banned' | 'expired' }[],
-  ): { name: string; chip_status: 'deleted' | 'banned' | 'expired' }[] {
+  private interleaveInactiveDashboardRows<
+    T extends { chip_status: 'deleted' | 'banned' | 'expired' },
+  >(rows: T[]): T[] {
     if (rows.length === 0) {
       return [];
     }
     const expired = rows.filter((r) => r.chip_status === 'expired');
     const deleted = rows.filter((r) => r.chip_status === 'deleted');
     const banned = rows.filter((r) => r.chip_status === 'banned');
-    const merged: { name: string; chip_status: 'deleted' | 'banned' | 'expired' }[] = [];
+    const merged: T[] = [];
     while (merged.length < rows.length) {
       const before = merged.length;
       if (expired.length > 0) {
@@ -2436,7 +2557,7 @@ export class CustomersService {
         break;
       }
     }
-    return merged.slice(0, 6).map(({ name, chip_status }) => ({ name, chip_status }));
+    return merged.slice(0, 6);
   }
 
   /**

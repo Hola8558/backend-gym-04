@@ -3,6 +3,7 @@ import { GenericStatus } from '@prisma/client';
 import { Type } from 'class-transformer';
 import { Expose } from 'class-transformer';
 import { CustomerAccessLogItemDto } from './customer-access-log-item.dto';
+import { CustomerAccessMembershipSpanDto } from './customer-access-membership-span.dto';
 
 export class CustomerAccessSummaryResponseDto {
   @Expose()
@@ -33,4 +34,9 @@ export class CustomerAccessSummaryResponseDto {
   @ApiProperty({ type: [CustomerAccessLogItemDto] })
   @Type(() => CustomerAccessLogItemDto)
   entries: CustomerAccessLogItemDto[];
+
+  @Expose()
+  @ApiProperty({ type: [CustomerAccessMembershipSpanDto] })
+  @Type(() => CustomerAccessMembershipSpanDto)
+  memberships: CustomerAccessMembershipSpanDto[];
 }
