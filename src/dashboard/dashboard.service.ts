@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import type { UserRole } from '@prisma/client';
 import type { JwtPayload } from '../auth/jwt.strategy';
 import type { DashboardSignUpHalf } from '../customers/types/dashboard-sign-up-half';
+import type { LoyaltyRankingMode } from '../customers/types/loyalty-ranking-mode.type';
 import { CustomersService } from '../customers/customers.service';
 import {
   evaluateDashboardMetricsGates,
@@ -41,11 +42,13 @@ export class DashboardService {
     user: JwtPayload,
     trendView: { year: number; half: DashboardSignUpHalf },
     fullYearTrendYear: number,
+    loyaltyMode: LoyaltyRankingMode = 'memberships',
   ) {
     return this.customersService.getSoloCoachDashboardMetrics(
       user,
       trendView,
       fullYearTrendYear,
+      loyaltyMode,
     );
   }
 }

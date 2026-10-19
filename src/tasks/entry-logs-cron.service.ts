@@ -1,59 +1,75 @@
-import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { Cron, CronExpression } from '@nestjs/schedule';
-import { AccountType, CrowdmeterDay, GenericStatus } from '@prisma/client';
+import { AccountType, CrowdmeterDay, GenericStatus, Prisma } from '@prisma/client';
 import { PrismaService } from '../core/prisma/prisma.service';
 import { ENTRY_LOG_RETENTION_DAYS as RETENTION_DAYS } from '../common/constants/entry-log-retention-days.const';
 import { subUtcDays } from '../common/utils/utc-date.util';
 import { buildCrowdmeterData } from './utils/crowdmeter-bucket.util';
 import { getCrowdmeterDayForDate } from './utils/crowdmeter-day.util';
 
-const LIVE_WINDOW_MINUTES = 75;
-const LIVE_STALE_MINUTES = 15;
-const EVERY_15_MINUTES = '0 */15 * * * *';
+const LIVE_WINDOW_MS = 75 * 60 * 1000;
+const LIVE_STALE_MS = 15 * 60 * 1000;
+const LIVE_STEP_MS = 15 * 60 * 1000;
+const LIVE_CATCHUP_MS = 24 * 60 * 60 * 1000;
+const LIVE_MAX_STEPS = 96;
 
 type EntryLogDateRow = {
   entryDate: Date;
 };
 
-type LiveCrowdmeterTimestampRow = {
-  updatedAt: Date;
+type LiveCapacityAccount = {
+  idAccount: number;
+  maxCapacity: number;
 };
 
 @Injectable()
-export class EntryLogsCronService implements OnModuleInit {
+export class EntryLogsCronService {
   private readonly logger = new Logger(EntryLogsCronService.name);
+  private lastCapacityUpdate = 0;
+  private inFlight: Promise<void> | null = null;
 
   constructor(private readonly prisma: PrismaService) {}
 
-  async onModuleInit(): Promise<void> {
-    const [liveCrowdmeter] = await this.prisma.$queryRaw<
-      LiveCrowdmeterTimestampRow[]
-    >`
-      SELECT updated_at AS "updatedAt"
-      FROM "Crowdmeter"
-      WHERE identifier = 'now'
-      ORDER BY updated_at DESC
-      LIMIT 1
-    `;
-    const isMissing = liveCrowdmeter === undefined;
-    const isStale =
-      liveCrowdmeter !== undefined &&
-      Date.now() - liveCrowdmeter.updatedAt.getTime() >
-        LIVE_STALE_MINUTES * 60 * 1000;
+  /** Fire-and-forget. Metrics and check-in must not wait on this pass. */
+  scheduleLiveRefresh(): void {
+    void this.ensureLiveRefresh().catch((error: unknown) => {
+      this.logger.error('Live crowdmeter refresh failed', error);
+    });
+  }
 
-    if (isMissing || isStale) {
-      this.logger.log(
-        'WakeUp Check: Live capacity is stale or missing. Forcing immediate calculation.',
-      );
-      await this.calculateLiveCrowdmeter();
+  /** Crowdmeter reads wait so the response is the row written by this pass. */
+  async awaitLiveRefresh(): Promise<void> {
+    try {
+      await this.ensureLiveRefresh();
+    } catch (error: unknown) {
+      this.logger.error('Live crowdmeter refresh failed', error);
     }
   }
 
-  @Cron(EVERY_15_MINUTES)
-  async calculateLiveCrowdmeter(): Promise<void> {
-    const liveBucket = this.getLiveCrowdmeterBucket(new Date());
-    const cutoffTime = new Date(Date.now() - LIVE_WINDOW_MINUTES * 60 * 1000);
-    const accountDetails = await this.prisma.accountDetail.findMany({
+  private ensureLiveRefresh(): Promise<void> {
+    const now = Date.now();
+    if (this.inFlight) {
+      return this.inFlight;
+    }
+    if (
+      this.lastCapacityUpdate !== 0 &&
+      now - this.lastCapacityUpdate <= LIVE_STALE_MS
+    ) {
+      return Promise.resolve();
+    }
+
+    const run = this.runGlobalLiveRefresh(now).finally(() => {
+      if (this.inFlight === run) {
+        this.inFlight = null;
+      }
+    });
+    this.inFlight = run;
+    return run;
+  }
+
+  private async runGlobalLiveRefresh(nowMs: number): Promise<void> {
+    const steps = this.buildLiveSteps(nowMs);
+    const accounts = await this.prisma.accountDetail.findMany({
       where: {
         account: {
           type: AccountType.pro,
@@ -66,38 +82,123 @@ export class EntryLogsCronService implements OnModuleInit {
       },
     });
 
-    for (const detail of accountDetails) {
-      const recentEntriesCount = await this.prisma.entryLog.count({
+    if (steps.length > 0 && accounts.length > 0) {
+      const existingRows = await this.prisma.crowdmeter.findMany({
         where: {
-          idAccount: detail.idAccount,
-          entryDate: { gte: cutoffTime },
-        },
-      });
-      const percentage =
-        detail.maxCapacity > 0
-          ? Math.round((recentEntriesCount / detail.maxCapacity) * 100)
-          : 0;
-      const calculatedPercentage = Math.min(percentage, 100);
-
-      await this.prisma.crowdmeter.upsert({
-        where: {
-          id_account_identifier: {
-            id_account: detail.idAccount,
-            identifier: CrowdmeterDay.now,
-          },
-        },
-        update: { data: { [liveBucket]: calculatedPercentage } },
-        create: {
-          id_account: detail.idAccount,
           identifier: CrowdmeterDay.now,
-          data: { [liveBucket]: calculatedPercentage },
+          id_account: { in: accounts.map((account) => account.idAccount) },
         },
+        select: { id_account: true, data: true },
       });
+      const existingByAccount = new Map(
+        existingRows.map((row) => [row.id_account, row.data]),
+      );
+      const windowStart = new Date(steps[0] - LIVE_WINDOW_MS);
+
+      for (const account of accounts) {
+        await this.refreshAccountLiveCrowdmeter(
+          account,
+          steps,
+          windowStart,
+          nowMs,
+          existingByAccount.get(account.idAccount),
+        );
+      }
     }
 
+    this.lastCapacityUpdate = Date.now();
     this.logger.log(
-      `CRON: Upserted live crowdmeter data for ${accountDetails.length} active gym accounts using a ${LIVE_WINDOW_MINUTES}-minute rolling window`,
+      `Live crowdmeter: refreshed ${accounts.length} pro accounts across ${steps.length} steps`,
     );
+  }
+
+  private buildLiveSteps(nowMs: number): number[] {
+    let origin = this.lastCapacityUpdate === 0
+      ? nowMs - LIVE_CATCHUP_MS
+      : this.lastCapacityUpdate;
+    if (nowMs - origin > LIVE_CATCHUP_MS) {
+      origin = nowMs - LIVE_CATCHUP_MS;
+    }
+
+    const steps: number[] = [];
+    for (
+      let step = origin + LIVE_STEP_MS;
+      step <= nowMs && steps.length < LIVE_MAX_STEPS;
+      step += LIVE_STEP_MS
+    ) {
+      steps.push(step);
+    }
+    return steps;
+  }
+
+  private async refreshAccountLiveCrowdmeter(
+    account: LiveCapacityAccount,
+    steps: number[],
+    windowStart: Date,
+    nowMs: number,
+    existing: Prisma.JsonValue | undefined,
+  ): Promise<void> {
+    const rows = await this.prisma.entryLog.findMany({
+      where: {
+        idAccount: account.idAccount,
+        entryDate: { gte: windowStart, lte: new Date(nowMs) },
+      },
+      select: { entryDate: true },
+    });
+    const entryTimes = rows
+      .map((row) => row.entryDate.getTime())
+      .sort((left, right) => left - right);
+    const sampled = this.sampleLiveBuckets(entryTimes, steps, account.maxCapacity);
+    const data = { ...readCrowdmeterMap(existing), ...sampled };
+
+    await this.prisma.crowdmeter.upsert({
+      where: {
+        id_account_identifier: {
+          id_account: account.idAccount,
+          identifier: CrowdmeterDay.now,
+        },
+      },
+      update: { data },
+      create: {
+        id_account: account.idAccount,
+        identifier: CrowdmeterDay.now,
+        data,
+      },
+    });
+  }
+
+  private sampleLiveBuckets(
+    sortedEntryTimes: number[],
+    steps: number[],
+    maxCapacity: number,
+  ): Record<string, number> {
+    const buckets: Record<string, number> = {};
+    let cursor = 0;
+
+    for (const step of steps) {
+      const windowStart = step - LIVE_WINDOW_MS;
+      while (
+        cursor < sortedEntryTimes.length &&
+        sortedEntryTimes[cursor] < windowStart
+      ) {
+        cursor += 1;
+      }
+      let count = 0;
+      for (let index = cursor; index < sortedEntryTimes.length; index += 1) {
+        if (sortedEntryTimes[index] > step) {
+          break;
+        }
+        count += 1;
+      }
+      const percentage =
+        maxCapacity > 0 ? Math.round((count / maxCapacity) * 100) : 0;
+      buckets[this.getLiveCrowdmeterBucket(new Date(step))] = Math.min(
+        percentage,
+        100,
+      );
+    }
+
+    return buckets;
   }
 
   private getLiveCrowdmeterBucket(date: Date): string {
@@ -199,4 +300,19 @@ export class EntryLogsCronService implements OnModuleInit {
 
     return rows.map((row) => row.entryDate);
   }
+}
+
+function readCrowdmeterMap(
+  value: Prisma.JsonValue | undefined,
+): Record<string, number> {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return {};
+  }
+  const mapped: Record<string, number> = {};
+  for (const [key, raw] of Object.entries(value)) {
+    if (typeof raw === 'number' && Number.isFinite(raw)) {
+      mapped[key] = raw;
+    }
+  }
+  return mapped;
 }

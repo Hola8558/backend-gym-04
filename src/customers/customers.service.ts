@@ -75,6 +75,7 @@ import { MobileCustomerLoginResponseDto } from './dto/mobile-customer-login-resp
 import { toDeletedCustomerResponseDto } from './utils/deleted-customer-response.mapper';
 import type { CustomerListFilters } from './types/customer-list-filters.type';
 import type { DashboardSignUpHalf } from './types/dashboard-sign-up-half';
+import type { LoyaltyRankingMode } from './types/loyalty-ranking-mode.type';
 import { obfuscateEmailForMobile } from './utils/obfuscate-email.util';
 import { buildMobileRoutineItems } from './utils/mobile-routine-items.util';
 import { SyncRoutineDto } from './dto/sync-routine.dto';
@@ -1371,6 +1372,7 @@ export class CustomersService {
     trendView: { year: number; half: DashboardSignUpHalf },
     fullYearTrendYear: number,
     accessDayTimeZone: string,
+    loyaltyMode: LoyaltyRankingMode = 'memberships',
   ): Promise<{
     active_members_count: number;
     new_customers_last_30_days: number;
@@ -1432,7 +1434,7 @@ export class CustomersService {
           this.computeMembershipDistributionByPlan(idAccount, today),
           this.computeExpiringSoonMemberships(idAccount, today),
           this.computeCancellationRatePercent(idAccount, today),
-          this.computeLoyaltyRanking(idAccount),
+          this.computeLoyaltyRanking(idAccount, loyaltyMode),
         ])
       : Promise.resolve(null);
 
@@ -1524,6 +1526,7 @@ export class CustomersService {
     user: JwtPayload,
     trendView: { year: number; half: DashboardSignUpHalf },
     fullYearTrendYear: number,
+    loyaltyMode: LoyaltyRankingMode = 'memberships',
   ): Promise<{
     active_members_count: number;
     new_customers_last_30_days: number;
@@ -1591,7 +1594,7 @@ export class CustomersService {
             this.computeMembershipDistributionByPlan(idAccount, today),
             this.computeExpiringSoonMemberships(idAccount, today),
             this.computeCancellationRatePercent(idAccount, today),
-            this.computeLoyaltyRanking(idAccount),
+            this.computeLoyaltyRanking(idAccount, loyaltyMode),
           ])
         : Promise.resolve(null),
     ]);
@@ -2310,11 +2313,16 @@ export class CustomersService {
   }
 
   /**
-   * Top 3 customers by summed calendar tenure from membership_histories (≈30-day months).
+   * Top 3 customers by summed membership tenure, or by the oldest gym enrollment date.
+   * Enrollment ranking skips profiles that have no `enrollment_date`.
    */
   private async computeLoyaltyRanking(
     idAccount: number,
+    mode: LoyaltyRankingMode = 'memberships',
   ): Promise<{ name: string; description: string }[]> {
+    if (mode === 'enrollment') {
+      return this.computeLoyaltyRankingByEnrollment(idAccount);
+    }
     type RawRow = { id_user: number; tenure_months: number };
     const raw = await this.prisma.$queryRaw<RawRow[]>(Prisma.sql`
       SELECT mh.id_user::int AS id_user,
@@ -2356,9 +2364,41 @@ export class CustomersService {
         }
         const name = this.formatDashboardListCustomerName(u);
         const months = Math.max(0, Number(row.tenure_months));
-        return { name, description: `${months} meses activos` };
+        return { name, description: String(months) };
       })
       .filter((r): r is { name: string; description: string } => r !== null);
+  }
+
+  private async computeLoyaltyRankingByEnrollment(
+    idAccount: number,
+  ): Promise<{ name: string; description: string }[]> {
+    const users = await this.prisma.user.findMany({
+      where: {
+        idAccount,
+        role: UserRole.customer,
+        status: { notIn: [GenericStatus.deleted, GenericStatus.banned] },
+        profile: { is: { enrollmentDate: { not: null } } },
+      },
+      select: {
+        email: true,
+        userNumber: true,
+        profile: { select: { name: true, lastName: true, enrollmentDate: true } },
+      },
+      orderBy: { profile: { enrollmentDate: 'asc' } },
+      take: 3,
+    });
+    return users.flatMap((user) => {
+      const enrolled = user.profile?.enrollmentDate;
+      if (!enrolled) {
+        return [];
+      }
+      return [
+        {
+          name: this.formatDashboardListCustomerName(user),
+          description: enrolled.toISOString().slice(0, 10),
+        },
+      ];
+    });
   }
 
   /**

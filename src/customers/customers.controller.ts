@@ -41,10 +41,12 @@ import { SyncRoutineDto } from './dto/sync-routine.dto';
 import { SyncRoutineResponseDto } from './dto/sync-routine-response.dto';
 import { BulkImportCustomersDto } from './dto/bulk-import-customers.dto';
 import { BulkImportCustomersResponseDto } from './dto/bulk-import-customers-response.dto';
+import { EntryLogsCronService } from '../tasks/entry-logs-cron.service';
 import { CustomersService } from './customers.service';
 import { CustomersImportService } from './customers-import.service';
 import { CUSTOMER_READ_FEATURES } from './constants/customer-read-features.const';
 import type { DashboardSignUpHalf } from './types/dashboard-sign-up-half';
+import { parseLoyaltyRankingMode } from './types/loyalty-ranking-mode.type';
 import { isValidIanaTimeZone } from '../common/utils/zoned-day-range.util';
 
 @Controller(['customer', 'customers'])
@@ -52,6 +54,7 @@ export class CustomersController {
   constructor(
     private readonly customersService: CustomersService,
     private readonly customersImportService: CustomersImportService,
+    private readonly entryLogsCron: EntryLogsCronService,
   ) {}
 
   @Public()
@@ -136,6 +139,13 @@ export class CustomersController {
     description: 'Calendar year (UTC) for the 12-month annual sign-up trend (`sign_up_trend_full_year`).',
   })
   @ApiQuery({
+    name: 'loyalty_by',
+    required: false,
+    enum: ['memberships', 'enrollment'],
+    description:
+      'Loyalty ranking order. memberships uses membership tenure. enrollment uses profiles.enrollment_date and skips customers without that date.',
+  })
+  @ApiQuery({
     name: 'crowdmeter_timezone',
     required: false,
     type: String,
@@ -148,6 +158,7 @@ export class CustomersController {
     @Query('trend_half') trendHalfRaw?: string,
     @Query('full_year_trend_year') fullYearTrendYearRaw?: string,
     @Query('crowdmeter_timezone') crowdmeterTimezoneRaw?: string,
+    @Query('loyalty_by') loyaltyByRaw?: string,
   ) {
     const trendView = this.parseSignUpTrendView(trendYearRaw, trendHalfRaw);
     const fullYearTrendYear = this.parseFullYearTrendYear(fullYearTrendYearRaw);
@@ -155,11 +166,13 @@ export class CustomersController {
     if (!isValidIanaTimeZone(crowdmeterTimezone)) {
       throw new BadRequestException('CUSTOMERS.ERRORS.INVALID_CROWDMETER_TIMEZONE');
     }
+    this.entryLogsCron.scheduleLiveRefresh();
     return this.customersService.getDashboardMetrics(
       user,
       trendView,
       fullYearTrendYear,
       crowdmeterTimezone,
+      parseLoyaltyRankingMode(loyaltyByRaw),
     );
   }
 

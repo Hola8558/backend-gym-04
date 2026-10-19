@@ -1,12 +1,17 @@
 import { Injectable } from '@nestjs/common';
 import { CrowdmeterDay } from '@prisma/client';
 import { PrismaService } from '../core/prisma/prisma.service';
+import { EntryLogsCronService } from '../tasks/entry-logs-cron.service';
 
 @Injectable()
 export class CrowdmeterService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly entryLogsCron: EntryLogsCronService,
+  ) {}
 
-  findAllForAccount(idAccount: number) {
+  async findAllForAccount(idAccount: number) {
+    await this.entryLogsCron.awaitLiveRefresh();
     return this.prisma.crowdmeter.findMany({
       where: { id_account: idAccount },
       select: {
@@ -17,6 +22,7 @@ export class CrowdmeterService {
   }
 
   async findNowForAccount(idAccount: number) {
+    await this.entryLogsCron.awaitLiveRefresh();
     const row = await this.prisma.crowdmeter.findUnique({
       where: {
         id_account_identifier: {

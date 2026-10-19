@@ -18,6 +18,8 @@ import { DashboardSignUpTrendPointDto } from '../customers/dto/dashboard-sign-up
 import { CoachDashboardMetricsResponseDto } from './dto/coach-dashboard-metrics-response.dto';
 import { SoloCoachDashboardMetricsResponseDto } from './dto/solo-coach-dashboard-metrics-response.dto';
 import type { DashboardSignUpHalf } from '../customers/types/dashboard-sign-up-half';
+import { parseLoyaltyRankingMode } from '../customers/types/loyalty-ranking-mode.type';
+import { EntryLogsCronService } from '../tasks/entry-logs-cron.service';
 import { DashboardService } from './dashboard.service';
 
 @Controller('dashboard')
@@ -27,6 +29,7 @@ export class DashboardController {
   constructor(
     private readonly dashboardService: DashboardService,
     private readonly customersService: CustomersService,
+    private readonly entryLogsCron: EntryLogsCronService,
   ) {}
 
   @Get('annual-trend')
@@ -91,6 +94,7 @@ export class DashboardController {
     @Query('crowdmeter_timezone') crowdmeterTimezone?: string,
   ): Promise<CoachDashboardMetricsResponseDto> {
     const tz = (crowdmeterTimezone ?? 'UTC').trim() || 'UTC';
+    this.entryLogsCron.scheduleLiveRefresh();
     return this.dashboardService.getCoachMetrics(user, tz);
   }
 
@@ -105,11 +109,17 @@ export class DashboardController {
     type: Number,
     description: 'Calendar year (UTC) for the 12-month sign-up trend.',
   })
+  @ApiQuery({
+    name: 'loyalty_by',
+    required: false,
+    enum: ['memberships', 'enrollment'],
+  })
   getSoloCoachMetrics(
     @CurrentUser() user: JwtPayload,
     @Query('trend_year') trendYearRaw?: string,
     @Query('trend_half') trendHalfRaw?: string,
     @Query('full_year_trend_year') fullYearTrendYearRaw?: string,
+    @Query('loyalty_by') loyaltyByRaw?: string,
   ): Promise<SoloCoachDashboardMetricsResponseDto> {
     const trendView = this.parseSignUpTrendView(trendYearRaw, trendHalfRaw);
     const fullYearTrendYear = this.parseFullYearTrendYear(fullYearTrendYearRaw);
@@ -117,6 +127,7 @@ export class DashboardController {
       user,
       trendView,
       fullYearTrendYear,
+      parseLoyaltyRankingMode(loyaltyByRaw),
     );
   }
 

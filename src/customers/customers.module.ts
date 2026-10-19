@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { AuthModule } from '../auth/auth.module';
+import { TasksModule } from '../tasks/tasks.module';
 import { RolesGuard } from '../common/guards/roles.guard';
 import { MembershipAuditModule } from '../membership-audit/membership-audit.module';
 import { RoutinesModule } from '../routines/routines.module';
@@ -15,6 +16,7 @@ import { CustomersService } from './customers.service';
     MembershipAuditModule,
     AuthModule,
     RoutinesModule,
+    TasksModule,
   ],
   controllers: [CustomersController, CustomersDeletedController],
   providers: [CustomersService, CustomersImportService, RolesGuard],

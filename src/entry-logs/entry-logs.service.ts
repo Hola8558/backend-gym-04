@@ -1,4 +1,5 @@
 import { Injectable, NotFoundException, UnauthorizedException } from '@nestjs/common';
+import { EntryLogsCronService } from '../tasks/entry-logs-cron.service';
 import { GenericStatus, Prisma, UserRole } from '@prisma/client';
 import { plainToInstance } from 'class-transformer';
 import type { JwtPayload } from '../auth/jwt.strategy';
@@ -33,13 +34,16 @@ type HistorySortField =
 
 @Injectable()
 export class EntryLogsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly entryLogsCron: EntryLogsCronService,
+  ) {}
 
   /**
    * Inserts one entry log row. Caller must enforce tenant and business rules.
    */
   async recordEntry(data: RecordEntryParams) {
-    return this.prisma.entryLog.create({
+    const row = await this.prisma.entryLog.create({
       data: {
         idAccount: data.idAccount,
         idUser: data.idUser,
@@ -47,6 +51,8 @@ export class EntryLogsService {
         status: data.status,
       },
     });
+    this.entryLogsCron.scheduleLiveRefresh();
+    return row;
   }
 
   async manualCheckin(
