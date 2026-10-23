@@ -19,6 +19,8 @@ import {
   parseEnrollmentDate,
 } from './utils/assert-customer-mandatory-fields.util';
 import { findNonDeletedUserByEmailInAccount } from './utils/find-non-deleted-user-by-email-in-account.util';
+import { mergeHealthAndPreferences } from './utils/normalize-health-and-preferences.util';
+import { activeHealthPreferenceNames } from '../settings/utils/health-preference-lists.util';
 import { openNewCurrentCustomerMembership } from '../customer-memberships/utils/current-customer-membership.util';
 
 function tenantRoleWhere(id_account: number, role: UserRole) {
@@ -69,9 +71,28 @@ export class SharedUsersService {
     });
   }
 
+  private async mergedHealthPreferences(
+    idAccount: number,
+    existing: Prisma.JsonValue | null | undefined,
+    incoming: Record<string, string[]> | null | undefined,
+  ): Promise<Prisma.InputJsonValue | typeof Prisma.JsonNull | undefined> {
+    if (incoming == null) {
+      return undefined;
+    }
+    const detail = await this.prisma.accountDetail.findUnique({
+      where: { idAccount },
+      select: { preferences: true },
+    });
+    const allowed = new Set(
+      activeHealthPreferenceNames(detail?.preferences ?? []),
+    );
+    return mergeHealthAndPreferences(existing, incoming, allowed);
+  }
+
   private buildUserUpdateInput(
     dto: UpdateUserDto,
     role: UserRole,
+    healthAndPreferences?: Prisma.InputJsonValue | typeof Prisma.JsonNull,
   ): Prisma.UserUpdateInput {
     const data: Prisma.UserUpdateInput = {};
 
@@ -111,6 +132,9 @@ export class SharedUsersService {
     }
     if (dto.observations !== undefined) {
       profileUpdate.observations = blankToNull(dto.observations);
+    }
+    if (healthAndPreferences !== undefined) {
+      profileUpdate.healthAndPreferences = healthAndPreferences;
     }
     if (dto.enrollment_date !== undefined) {
       profileUpdate.enrollmentDate = parseEnrollmentDate(dto.enrollment_date);
@@ -221,7 +245,12 @@ export class SharedUsersService {
       dto.membershipId !== undefined &&
       dto.membershipId !== null;
 
-    const data = this.buildUserUpdateInput(dto, role);
+    const healthAndPreferences = await this.mergedHealthPreferences(
+      existing.idAccount,
+      existing.profile?.healthAndPreferences,
+      dto.health_and_preferences,
+    );
+    const data = this.buildUserUpdateInput(dto, role, healthAndPreferences);
     const hasAnyUserUpdate = Object.keys(data).length > 0;
 
     if (role === UserRole.customer && dto.coachId !== undefined) {

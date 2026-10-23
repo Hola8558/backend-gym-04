@@ -1,9 +1,10 @@
 import {
+  BadRequestException,
   ForbiddenException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { GenericStatus } from '@prisma/client';
+import { GenericStatus, Prisma } from '@prisma/client';
 import { PrismaService } from '../core/prisma/prisma.service';
 import { UpdateAppearanceDto } from './dto/update-appearance.dto';
 import { AppearanceResponseDto } from './dto/appearance-response.dto';
@@ -21,6 +22,18 @@ import { MandatoryFieldsResponseDto } from './dto/mandatory-fields-response.dto'
 import { UpdateMandatoryFieldsDto } from './dto/update-mandatory-fields.dto';
 import { toMandatoryFieldsResponseDto } from './utils/mandatory-fields-response.mapper';
 import { assertMandatoryFieldsManager } from './utils/assert-mandatory-fields-manager.util';
+import { HealthPreferencesResponseDto } from './dto/health-preferences-response.dto';
+import { UpdateHealthPreferencesDto } from './dto/update-health-preferences.dto';
+import { toHealthPreferencesResponseDto } from './utils/health-preferences-response.mapper';
+import {
+  HEALTH_PREFERENCE_DELETED_SUFFIX,
+  healthPreferenceBaseName,
+  healthPreferenceNameKey,
+  isDeletedHealthPreference,
+  joinHealthPreferences,
+  normalizeHealthPreferenceName,
+  splitHealthPreferences,
+} from './utils/health-preference-lists.util';
 
 const ENTRY_LOGS_FEATURE_ID = 5001;
 
@@ -272,6 +285,163 @@ export class SettingsService {
       select: { mandatoryFields: true },
     });
     return toMandatoryFieldsResponseDto(updated.mandatoryFields);
+  }
+
+  async getHealthPreferences(
+    idAccount: number,
+  ): Promise<HealthPreferencesResponseDto> {
+    const preferences = await this.loadHealthPreferences(idAccount);
+    return toHealthPreferencesResponseDto(preferences);
+  }
+
+  async updateHealthPreferences(
+    idAccount: number,
+    idUser: number,
+    dto: UpdateHealthPreferencesDto,
+  ): Promise<HealthPreferencesResponseDto> {
+    await assertMandatoryFieldsManager(this.prisma, idAccount, idUser);
+    const current = await this.loadHealthPreferences(idAccount);
+    const detail = await this.prisma.accountDetail.findUnique({
+      where: { idAccount },
+      select: { idAccountDetail: true },
+    });
+    if (!detail) {
+      throw new NotFoundException('SETTINGS.ERRORS.ACCOUNT_NOT_FOUND');
+    }
+    const planned = this.planHealthPreferenceAction(current, dto);
+    await this.prisma.$transaction(async (tx) => {
+      if (planned.rename) {
+        await this.renameHealthPreferenceKey(
+          tx,
+          idAccount,
+          planned.rename.from,
+          planned.rename.to,
+        );
+      }
+      await tx.accountDetail.update({
+        where: { idAccountDetail: detail.idAccountDetail },
+        data: { preferences: planned.next },
+      });
+    });
+    return toHealthPreferencesResponseDto(planned.next);
+  }
+
+  private async loadHealthPreferences(idAccount: number): Promise<string[]> {
+    const detail = await this.prisma.accountDetail.findUnique({
+      where: { idAccount },
+      select: { preferences: true },
+    });
+    if (!detail) {
+      throw new NotFoundException('SETTINGS.ERRORS.ACCOUNT_NOT_FOUND');
+    }
+    return detail.preferences;
+  }
+
+  private planHealthPreferenceAction(
+    current: string[],
+    dto: UpdateHealthPreferencesDto,
+  ): { next: string[]; rename?: { from: string; to: string } } {
+    const { active, deleted } = splitHealthPreferences(current);
+    if (dto.action === 'add') {
+      const name = this.requirePreferenceName(dto.name);
+      this.assertPreferenceNameFree(current, name);
+      return { next: joinHealthPreferences([...active, name], deleted) };
+    }
+    if (dto.action === 'rename') {
+      const from = dto.name.trim();
+      const to = this.requirePreferenceName(dto.next_name ?? '');
+      if (!active.includes(from)) {
+        throw new BadRequestException('SETTINGS.ERRORS.PREFERENCE_NOT_FOUND');
+      }
+      this.assertPreferenceNameFree(current, to, from);
+      return {
+        next: joinHealthPreferences(
+          active.map((name) => (name === from ? to : name)),
+          deleted,
+        ),
+        rename: { from, to },
+      };
+    }
+    if (dto.action === 'delete') {
+      const name = dto.name.trim();
+      if (!active.includes(name)) {
+        throw new BadRequestException('SETTINGS.ERRORS.PREFERENCE_NOT_FOUND');
+      }
+      const deletedName = `${name}${HEALTH_PREFERENCE_DELETED_SUFFIX}`;
+      if (deleted.includes(deletedName)) {
+        throw new BadRequestException('SETTINGS.ERRORS.PREFERENCE_NAME_TAKEN');
+      }
+      return {
+        next: joinHealthPreferences(
+          active.filter((item) => item !== name),
+          [...deleted, deletedName],
+        ),
+      };
+    }
+    const stored = dto.name.trim();
+    if (!deleted.includes(stored) || !isDeletedHealthPreference(stored)) {
+      throw new BadRequestException('SETTINGS.ERRORS.PREFERENCE_NOT_FOUND');
+    }
+    const restored = healthPreferenceBaseName(stored);
+    this.assertPreferenceNameFree(current, restored, stored);
+    return {
+      next: joinHealthPreferences(
+        [...active, restored],
+        deleted.filter((item) => item !== stored),
+      ),
+    };
+  }
+
+  private requirePreferenceName(raw: string): string {
+    const name = normalizeHealthPreferenceName(raw);
+    if (!name) {
+      const trimmed = raw.trim();
+      if (!trimmed) {
+        throw new BadRequestException('SETTINGS.ERRORS.PREFERENCE_NAME_REQUIRED');
+      }
+      if (trimmed.toLocaleLowerCase().endsWith(HEALTH_PREFERENCE_DELETED_SUFFIX)) {
+        throw new BadRequestException('SETTINGS.ERRORS.PREFERENCE_NAME_RESERVED');
+      }
+      throw new BadRequestException('SETTINGS.ERRORS.PREFERENCE_NAME_TOO_LONG');
+    }
+    return name;
+  }
+
+  private assertPreferenceNameFree(
+    current: readonly string[],
+    name: string,
+    except?: string,
+  ): void {
+    const key = healthPreferenceNameKey(name);
+    const taken = current.some(
+      (item) => item !== except && healthPreferenceNameKey(item) === key,
+    );
+    if (taken) {
+      throw new BadRequestException('SETTINGS.ERRORS.PREFERENCE_NAME_TAKEN');
+    }
+  }
+
+  /** One account-scoped JSON key rename. Not a full-table rewrite. */
+  private async renameHealthPreferenceKey(
+    tx: Prisma.TransactionClient,
+    idAccount: number,
+    from: string,
+    to: string,
+  ): Promise<void> {
+    await tx.$executeRaw`
+      UPDATE profiles AS p
+      SET health_and_preferences =
+        (p.health_and_preferences - ${from})
+        || jsonb_build_object(
+          ${to},
+          COALESCE(p.health_and_preferences -> ${from}, '[]'::jsonb)
+        )
+      FROM users AS u
+      WHERE p.id_user = u.id_user
+        AND u.id_account = ${idAccount}
+        AND p.health_and_preferences IS NOT NULL
+        AND jsonb_exists(p.health_and_preferences, ${from})
+    `;
   }
 
   private toResponse(record: AppearanceRecord): AppearanceResponseDto {

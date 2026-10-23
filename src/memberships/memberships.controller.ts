@@ -45,7 +45,8 @@ export class MembershipsController {
   findAll(
     @CurrentUser() user: JwtPayload,
     @Query('status') status?: string,
+    @Query('search') search?: string,
   ) {
-    return this.membershipTypesService.findAll(user.id_account, status);
+    return this.membershipTypesService.findAll(user.id_account, status, search);
   }
 }

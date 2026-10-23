@@ -2,8 +2,8 @@ import { Type } from 'class-transformer';
 import { IsIn, IsInt, IsOptional, Min } from 'class-validator';
 
 export class CustomerListFocusQueryDto {
-  @IsIn(['expired', 'deleted', 'banned'])
-  kind!: 'expired' | 'deleted' | 'banned';
+  @IsIn(['active', 'expired', 'deleted', 'banned'])
+  kind!: 'active' | 'expired' | 'deleted' | 'banned';
 
   @Type(() => Number)
   @IsInt()

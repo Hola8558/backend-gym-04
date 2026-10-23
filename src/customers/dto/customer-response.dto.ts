@@ -1,5 +1,6 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Expose } from 'class-transformer';
+import { HealthAndPreferences } from '../../users/types/health-and-preferences.type';
 
 export class CustomerResponseDto {
   @Expose()
@@ -33,6 +34,10 @@ export class CustomerResponseDto {
   @Expose()
   @ApiPropertyOptional({ nullable: true })
   observations: string | null;
+
+  @Expose()
+  @ApiPropertyOptional({ nullable: true })
+  health_and_preferences: HealthAndPreferences;
 
   @Expose()
   @ApiPropertyOptional({ nullable: true })

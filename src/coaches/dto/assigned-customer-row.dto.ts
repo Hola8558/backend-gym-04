@@ -17,4 +17,16 @@ export class AssignedCustomerRowDto {
   @Expose()
   @ApiPropertyOptional({ nullable: true })
   email: string | null;
+
+  @Expose()
+  @ApiPropertyOptional({ nullable: true })
+  user_number: string | null;
+
+  @Expose()
+  @ApiPropertyOptional({ nullable: true })
+  phone: string | null;
+
+  @Expose()
+  @ApiPropertyOptional({ nullable: true })
+  membership_name: string | null;
 }

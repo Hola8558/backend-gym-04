@@ -25,13 +25,22 @@ import { MandatoryFieldsResponseDto } from './dto/mandatory-fields-response.dto'
 import { StyleResponseDto } from './dto/style-response.dto';
 import { UpdateAppearanceDto } from './dto/update-appearance.dto';
 import { UpdateMandatoryFieldsDto } from './dto/update-mandatory-fields.dto';
+import { HealthPreferencesResponseDto } from './dto/health-preferences-response.dto';
+import { UpdateHealthPreferencesDto } from './dto/update-health-preferences.dto';
+import { QuickAccessResponseDto } from './dto/quick-access-response.dto';
+import { QuickAccessShortcutsResponseDto } from './dto/quick-access-shortcuts-response.dto';
+import { UpdateQuickAccessDto } from './dto/update-quick-access.dto';
+import { QuickAccessService } from './quick-access.service';
 import { SettingsService } from './settings.service';
 
 @ApiTags('settings')
 @ApiBearerAuth()
 @Controller('settings')
 export class SettingsController {
-  constructor(private readonly settingsService: SettingsService) {}
+  constructor(
+    private readonly settingsService: SettingsService,
+    private readonly quickAccessService: QuickAccessService,
+  ) {}
 
   @Get('appearance')
   @ApiOperation({ summary: 'Get appearance settings for the current account' })
@@ -110,6 +119,69 @@ export class SettingsController {
       user.sub,
       dto,
     );
+  }
+
+  @Get('health-preferences')
+  @ApiOperation({
+    summary: 'Health and preference lists configured for the current account',
+  })
+  @ApiResponse({ status: 200, type: HealthPreferencesResponseDto })
+  getHealthPreferences(@CurrentUser() user: JwtPayload) {
+    return this.settingsService.getHealthPreferences(user.id_account);
+  }
+
+  @Patch('health-preferences')
+  @UseGuards(RolesGuard)
+  @Roles(UserRole.owner, UserRole.solo_coach)
+  @ApiOperation({
+    summary: 'Add, rename, soft-delete, or restore an account health list',
+  })
+  @ApiResponse({ status: 200, type: HealthPreferencesResponseDto })
+  updateHealthPreferences(
+    @CurrentUser() user: JwtPayload,
+    @Body() dto: UpdateHealthPreferencesDto,
+  ) {
+    return this.settingsService.updateHealthPreferences(
+      user.id_account,
+      user.sub,
+      dto,
+    );
+  }
+
+  @Get('quick-access/shortcuts')
+  @ApiOperation({
+    summary: 'Global quick-access shortcuts for the current account, in display order',
+  })
+  @ApiResponse({ status: 200, type: QuickAccessShortcutsResponseDto })
+  getQuickAccessShortcuts(@CurrentUser() user: JwtPayload) {
+    return this.quickAccessService.listShortcuts(user.id_account);
+  }
+
+  @Get('quick-access')
+  @ApiOperation({
+    summary: 'Saved quick filters for one table view of the current account',
+  })
+  @ApiQuery({ name: 'view', required: true, example: 'customers.active' })
+  @ApiResponse({ status: 200, type: QuickAccessResponseDto })
+  getQuickAccess(
+    @CurrentUser() user: JwtPayload,
+    @Query('view') view = '',
+  ) {
+    return this.quickAccessService.list(user.id_account, view);
+  }
+
+  @Patch('quick-access')
+  @UseGuards(RolesGuard)
+  @Roles(UserRole.owner, UserRole.coach, UserRole.solo_coach)
+  @ApiOperation({
+    summary: 'Add or remove a saved quick filter for a table view',
+  })
+  @ApiResponse({ status: 200, type: QuickAccessResponseDto })
+  updateQuickAccess(
+    @CurrentUser() user: JwtPayload,
+    @Body() dto: UpdateQuickAccessDto,
+  ) {
+    return this.quickAccessService.update(user.id_account, dto);
   }
 
   @Patch('appearance')

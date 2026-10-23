@@ -23,6 +23,7 @@ import { MembershipAction } from '../membership-audit/types/membership-action.co
 import { membershipRowDatesToAudit } from '../membership-audit/utils/membership-history-date.util';
 import { PrismaService } from '../core/prisma/prisma.service';
 import type { JwtPayload } from '../auth/jwt.strategy';
+import type { MembershipDistributionPoint } from './types/membership-distribution-point.type';
 import { AuthService } from '../auth/auth.service';
 import { accountRequiresCustomerMembership } from '../auth/utils/account-requires-customer-membership.util';
 import { RoutineHydrationService } from '../routines/routine-hydration.service';
@@ -98,6 +99,7 @@ const customerSearchSelect = {
       phone: true,
       emergencyPhone: true,
       observations: true,
+      healthAndPreferences: true,
       createdAt: true,
       enrollmentDate: true,
       coach: {
@@ -350,10 +352,11 @@ export class CustomersService {
     limit = 50,
     search = '',
     listFilters?: CustomerListFilters,
+    unpaged = false,
   ): Promise<{ data: CustomerResponseDto[]; total: number }> {
-    const take = Math.max(Number(limit) || 50, 1);
+    const take = unpaged ? undefined : Math.max(Number(limit) || 50, 1);
     const currentPage = Math.max(Number(page) || 1, 1);
-    const skip = (currentPage - 1) * take;
+    const skip = unpaged || take == null ? undefined : (currentPage - 1) * take;
     const usesMembershipManagedStatus =
       await accountUsesMembershipManagedCustomerStatus(this.prisma, id_account);
     const where = this.buildCustomerWhere(
@@ -368,8 +371,7 @@ export class CustomersService {
         where,
         select: customerSearchSelect,
         orderBy: { idUser: 'asc' },
-        skip,
-        take,
+        ...(unpaged ? {} : { skip, take }),
       }),
       this.prisma.user.count({ where }),
     ]);
@@ -427,7 +429,11 @@ export class CustomersService {
       dto.membershipId != null && Number.isFinite(Number(dto.membershipId));
     const rawCoach = dto.coachId != null ? dto.coachId.trim() : '';
     const hasCoach = rawCoach.length > 0;
-    if (!hasStatus && !hasMembership && !hasCoach) {
+    const hasCoverage = dto.coverage === 'none' || dto.coverage === 'some';
+    if (hasCoverage && dto.coverageOf !== 'routines' && dto.coverageOf !== 'menus') {
+      throw new BadRequestException('CUSTOMERS.ERRORS.INVALID_LIST_FILTERS');
+    }
+    if (!hasStatus && !hasMembership && !hasCoach && !hasCoverage) {
       return undefined;
     }
     const out: CustomerListFilters = {};
@@ -447,6 +453,10 @@ export class CustomersService {
         }
         out.coachId = n;
       }
+    }
+    if (hasCoverage && (dto.coverageOf === 'routines' || dto.coverageOf === 'menus')) {
+      out.coverage = dto.coverage;
+      out.coverageOf = dto.coverageOf;
     }
     return out;
   }
@@ -514,10 +524,11 @@ export class CustomersService {
     limit = 50,
     search = '',
     membershipTypeId?: number,
+    unpaged = false,
   ): Promise<{ data: DeletedCustomerResponseDto[]; total: number }> {
-    const take = Math.max(Number(limit) || 50, 1);
+    const take = unpaged ? undefined : Math.max(Number(limit) || 50, 1);
     const currentPage = Math.max(Number(page) || 1, 1);
-    const skip = (currentPage - 1) * take;
+    const skip = unpaged || take == null ? undefined : (currentPage - 1) * take;
     const where = this.buildDeletedCustomerWhere(
       id_account,
       search,
@@ -529,8 +540,7 @@ export class CustomersService {
         where,
         select: deletedCustomerSelect,
         orderBy: [{ editAt: 'desc' }, { idUser: 'desc' }],
-        skip,
-        take,
+        ...(unpaged ? {} : { skip, take }),
       }),
       this.prisma.user.count({ where }),
     ]);
@@ -548,10 +558,11 @@ export class CustomersService {
     page = 1,
     limit = 50,
     search = '',
+    unpaged = false,
   ): Promise<{ data: BannedCustomerResponseDto[]; total: number }> {
-    const take = Math.max(Number(limit) || 50, 1);
+    const take = unpaged ? undefined : Math.max(Number(limit) || 50, 1);
     const currentPage = Math.max(Number(page) || 1, 1);
-    const skip = (currentPage - 1) * take;
+    const skip = unpaged || take == null ? undefined : (currentPage - 1) * take;
     const where = this.buildBannedBanWhere(id_account, search);
 
     const [rows, total] = await Promise.all([
@@ -559,8 +570,7 @@ export class CustomersService {
         where,
         select: bannedBanSelect,
         orderBy: [{ createdAt: 'desc' }, { idBan: 'desc' }],
-        skip,
-        take,
+        ...(unpaged ? {} : { skip, take }),
       }),
       this.prisma.customerBan.count({ where }),
     ]);
@@ -579,20 +589,20 @@ export class CustomersService {
    */
   async resolveListFocusPage(
     idAccount: number,
-    kind: 'expired' | 'deleted' | 'banned',
+    kind: 'active' | 'expired' | 'deleted' | 'banned',
     idUser: number,
     limit = 50,
   ): Promise<{ page: number }> {
     const take = Math.max(Number(limit) || 50, 1);
     let before = 0;
 
-    if (kind === 'expired') {
+    if (kind === 'active' || kind === 'expired') {
       const usesMembershipManagedStatus =
         await accountUsesMembershipManagedCustomerStatus(this.prisma, idAccount);
       const where = this.buildCustomerWhere(
         idAccount,
         '',
-        { status: 'INACTIVE' },
+        kind === 'expired' ? { status: 'INACTIVE' } : undefined,
         usesMembershipManagedStatus,
       );
       const matches = await this.prisma.user.count({
@@ -1256,6 +1266,7 @@ export class CustomersService {
             },
           }
         : {}),
+      ...this.coverageWhere(idAccount, filters),
       ...(normalizedQuery
         ? {
             OR: [
@@ -1299,6 +1310,25 @@ export class CustomersService {
           }
         : {}),
     };
+  }
+
+  private coverageWhere(
+    idAccount: number,
+    filters?: CustomerListFilters,
+  ): Prisma.UserWhereInput {
+    if (!filters?.coverage || !filters.coverageOf) {
+      return {};
+    }
+    const active = { status: GenericStatus.active };
+    if (filters.coverageOf === 'routines') {
+      const match = { ...active, idAccount };
+      return filters.coverage === 'none'
+        ? { routines: { none: match } }
+        : { routines: { some: match } };
+    }
+    return filters.coverage === 'none'
+      ? { customerMenus: { none: active } }
+      : { customerMenus: { some: active } };
   }
 
   private buildBannedBanWhere(
@@ -1381,7 +1411,7 @@ export class CustomersService {
     access_crowdmeter_today: number[] | null;
     renewals_trend: { month_start: string; count: number }[] | null;
     sign_up_trend_full_year: { month_start: string; count: number }[];
-    membership_distribution: { name: string; value: number }[] | null;
+    membership_distribution: MembershipDistributionPoint[] | null;
     expiring_soon: { name: string; days_until_end: number }[] | null;
     inactive_customers: {
       id_user: number;
@@ -1468,7 +1498,7 @@ export class CustomersService {
 
     let renewals_last_30_days: number | null = null;
     let renewals_trend: { month_start: string; count: number }[] | null = null;
-    let membership_distribution: { name: string; value: number }[] | null = null;
+    let membership_distribution: MembershipDistributionPoint[] | null = null;
     let expiring_soon: { name: string; days_until_end: number }[] | null = null;
     let cancellation_rate_percent: number | null = null;
     let loyalty_ranking: { name: string; description: string }[] | null = null;
@@ -1540,7 +1570,7 @@ export class CustomersService {
     memberships: {
       renewals_last_30_days: number;
       renewals_trend: { month_start: string; count: number }[];
-      membership_distribution: { name: string; value: number }[];
+      membership_distribution: MembershipDistributionPoint[];
       expiring_soon: { name: string; days_until_end: number }[];
       cancellation_rate_percent: number;
       loyalty_ranking: { name: string; description: string }[];
@@ -1602,7 +1632,7 @@ export class CustomersService {
     let memberships: {
       renewals_last_30_days: number;
       renewals_trend: { month_start: string; count: number }[];
-      membership_distribution: { name: string; value: number }[];
+      membership_distribution: MembershipDistributionPoint[];
       expiring_soon: { name: string; days_until_end: number }[];
       cancellation_rate_percent: number;
       loyalty_ranking: { name: string; description: string }[];
@@ -2718,7 +2748,7 @@ export class CustomersService {
   private async computeMembershipDistributionByPlan(
     idAccount: number,
     today: Date,
-  ): Promise<{ name: string; value: number }[]> {
+  ): Promise<MembershipDistributionPoint[]> {
     const rows = await this.prisma.customerMembership.findMany({
       where: {
         idAccount,
@@ -2736,19 +2766,29 @@ export class CustomersService {
         },
       },
       select: {
+        idMembershipType: true,
         membershipType: { select: { name: true } },
       },
     });
 
-    const counts = new Map<string, number>();
+    const counts = new Map<number, { name: string; value: number }>();
     for (const row of rows) {
       const name = row.membershipType.name.trim();
       const label = name.length > 0 ? name : '—';
-      counts.set(label, (counts.get(label) ?? 0) + 1);
+      const current = counts.get(row.idMembershipType);
+      if (current) {
+        current.value += 1;
+      } else {
+        counts.set(row.idMembershipType, { name: label, value: 1 });
+      }
     }
 
     return Array.from(counts.entries())
-      .map(([name, value]) => ({ name, value }))
+      .map(([id_membership_type, row]) => ({
+        id_membership_type,
+        name: row.name,
+        value: row.value,
+      }))
       .sort((a, b) => a.name.localeCompare(b.name));
   }
 

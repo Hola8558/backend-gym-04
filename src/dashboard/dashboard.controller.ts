@@ -20,6 +20,9 @@ import { SoloCoachDashboardMetricsResponseDto } from './dto/solo-coach-dashboard
 import type { DashboardSignUpHalf } from '../customers/types/dashboard-sign-up-half';
 import { parseLoyaltyRankingMode } from '../customers/types/loyalty-ranking-mode.type';
 import { EntryLogsCronService } from '../tasks/entry-logs-cron.service';
+import { DashboardExportQueryDto } from './dto/dashboard-export-query.dto';
+import { DashboardExportResponseDto } from './dto/dashboard-export-response.dto';
+import { DashboardMetricsExportService } from './dashboard-metrics-export.service';
 import { DashboardService } from './dashboard.service';
 
 @Controller('dashboard')
@@ -30,7 +33,25 @@ export class DashboardController {
     private readonly dashboardService: DashboardService,
     private readonly customersService: CustomersService,
     private readonly entryLogsCron: EntryLogsCronService,
+    private readonly metricsExport: DashboardMetricsExportService,
   ) {}
+
+  @Get('export')
+  @ApiOkResponse({ type: DashboardExportResponseDto })
+  @ApiQuery({ name: 'metrics', required: true, type: String })
+  @ApiQuery({ name: 'loyalty_by', required: false, enum: ['memberships', 'enrollment'] })
+  @ApiQuery({ name: 'timezone', required: false, type: String })
+  exportMetrics(
+    @CurrentUser() user: JwtPayload,
+    @Query() query: DashboardExportQueryDto,
+  ): Promise<DashboardExportResponseDto> {
+    return this.metricsExport.exportMetrics(
+      user,
+      query.metrics,
+      query.loyalty_by ?? 'memberships',
+      query.timezone,
+    );
+  }
 
   @Get('annual-trend')
   @ApiOkResponse({ type: DashboardSignUpTrendPointDto, isArray: true })

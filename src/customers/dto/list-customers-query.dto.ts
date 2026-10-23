@@ -57,4 +57,14 @@ export class ListCustomersQueryDto {
   @IsString()
   @IsOptional()
   coachId?: string;
+
+  @ApiPropertyOptional({ enum: ['none', 'some'] })
+  @IsOptional()
+  @IsIn(['none', 'some'])
+  coverage?: 'none' | 'some';
+
+  @ApiPropertyOptional({ enum: ['routines', 'menus'] })
+  @IsOptional()
+  @IsIn(['routines', 'menus'])
+  coverageOf?: 'routines' | 'menus';
 }

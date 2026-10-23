@@ -129,6 +129,8 @@ model AccountDetail {
   routineTemplate String?   @map("routine_template") @db.Text
   stripeCustomerId String?  @map("stripe_customer_id") @db.Text
   mandatoryFields  String[] @default(["phone", "emergency_phone", "name", "email", "lastname", "enrollment_date"]) @map("mandatory_fields")
+  preferences      String[] @default(["alergias", "lesiones"]) @map("preferences")
+  filtersAndQaccess Json     @default("{}") @map("filters_and_qaccess")
 
   account Account @relation(fields: [idAccount], references: [idAccount], onDelete: Cascade)
 
@@ -180,7 +182,8 @@ model Profile {
   lastName         String?       @map("last_name")
   phone            String?       @map("phone")
   emergencyPhone   String?       @map("emergency_phone")
-  observations     String?       @map("observations") @db.Text
+  observations         String?       @map("observations") @db.Text
+  healthAndPreferences Json?         @map("health_and_preferences")
   enrollmentDate   DateTime?     @default(now()) @map("enrollment_date")
   timeSessionAlive Int           @default(7) @map("time_session_alive")
   createdAt        DateTime      @map("created_at")

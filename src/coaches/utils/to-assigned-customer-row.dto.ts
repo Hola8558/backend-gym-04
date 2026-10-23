@@ -4,7 +4,15 @@ import { AssignedCustomerRowDto } from '../dto/assigned-customer-row.dto';
 type Row = {
   idUser: number;
   email: string | null;
-  profile: { name: string | null; lastName: string | null } | null;
+  userNumber: string | null;
+  profile: {
+    name: string | null;
+    lastName: string | null;
+    phone: string | null;
+  } | null;
+  customerMemberships: Array<{
+    membershipType: { name: string } | null;
+  }>;
 };
 
 export function toAssignedCustomerRowDto(row: Row): AssignedCustomerRowDto {
@@ -15,6 +23,9 @@ export function toAssignedCustomerRowDto(row: Row): AssignedCustomerRowDto {
       name: row.profile?.name ?? null,
       lastname: row.profile?.lastName ?? null,
       email: row.email,
+      user_number: row.userNumber,
+      phone: row.profile?.phone ?? null,
+      membership_name: row.customerMemberships[0]?.membershipType?.name ?? null,
     },
     { excludeExtraneousValues: true },
   );

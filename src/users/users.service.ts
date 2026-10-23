@@ -19,6 +19,8 @@ import { resolveInitialFeatureFlagStatus } from '../common/utils/resolve-initial
 import { CreateUserDto } from './dto/create-user.dto';
 import { findNonDeletedUserByEmailInAccount } from './utils/find-non-deleted-user-by-email-in-account.util';
 import { generateUserNumber } from './utils/generate-user-number.util';
+import { healthAndPreferencesForCreate } from './utils/normalize-health-and-preferences.util';
+import { activeHealthPreferenceNames } from '../settings/utils/health-preference-lists.util';
 import type { BulkImportCustomerCoercedRow } from './types/bulk-import-customer-row.type';
 import { resolveBulkImportEmailCandidate } from './utils/resolve-bulk-import-email.util';
 import {
@@ -223,12 +225,24 @@ export class UsersService {
           }
         }
 
+        const healthAndPreferences =
+          dto.role === UserRole.customer
+            ? await this.healthPreferencesForNewCustomer(
+                tx,
+                id_account,
+                dto.health_and_preferences,
+              )
+            : undefined;
+
         const profileCreate: Prisma.ProfileCreateWithoutUserInput = {
           name: blankToNull(dto.name),
           lastName: blankToNull(dto.last_name),
           phone: blankToNull(dto.phone),
           emergencyPhone: blankToNull(dto.emergency_phone),
           observations: blankToNull(dto.observations),
+          ...(healthAndPreferences
+            ? { healthAndPreferences }
+            : {}),
           enrollmentDate: parseEnrollmentDate(dto.enrollment_date) ?? new Date(),
           timeSessionAlive: 7,
           status: GenericStatus.active,
@@ -282,11 +296,10 @@ export class UsersService {
           dto.membershipId !== null &&
           membershipTypeForCreate
         ) {
-          const startDate = startOfUtcDay(new Date());
-          const endDate = addUtcDays(
-            startDate,
-            membershipTypeForCreate.durationDays,
-          );
+          const startDate = parseEnrollmentDate(dto.membership_start_date)
+            ?? startOfUtcDay(new Date());
+          const endDate = parseEnrollmentDate(dto.membership_end_date)
+            ?? addUtcDays(startDate, membershipTypeForCreate.durationDays);
           const membership = await tx.customerMembership.create({
             data: {
               idAccount: id_account,
@@ -410,6 +423,22 @@ export class UsersService {
     }
 
     return null;
+  }
+
+  private async healthPreferencesForNewCustomer(
+    tx: Prisma.TransactionClient,
+    idAccount: number,
+    value: Record<string, string[]> | undefined,
+  ): Promise<Prisma.InputJsonValue | undefined> {
+    if (value == null) {
+      return undefined;
+    }
+    const detail = await tx.accountDetail.findUnique({
+      where: { idAccount },
+      select: { preferences: true },
+    });
+    const allowed = new Set(activeHealthPreferenceNames(detail?.preferences ?? []));
+    return healthAndPreferencesForCreate(value, allowed);
   }
 
   private async createCustomerFromBulkImportAttempt(

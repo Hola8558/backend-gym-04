@@ -97,6 +97,7 @@ export class AccountsService {
             create: {
               customersLimit,
               mandatoryFields: [...DEFAULT_MANDATORY_CUSTOMER_FIELDS],
+              preferences: ['alergias', 'lesiones'],
               ...(dto.stripeCustomerId
                 ? { stripeCustomerId: dto.stripeCustomerId }
                 : {}),

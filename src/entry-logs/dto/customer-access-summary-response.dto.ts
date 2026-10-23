@@ -3,6 +3,7 @@ import { GenericStatus } from '@prisma/client';
 import { Type } from 'class-transformer';
 import { Expose } from 'class-transformer';
 import { CustomerAccessLogItemDto } from './customer-access-log-item.dto';
+import { HealthAndPreferences } from '../../users/types/health-and-preferences.type';
 import { CustomerAccessMembershipSpanDto } from './customer-access-membership-span.dto';
 
 export class CustomerAccessSummaryResponseDto {
@@ -21,6 +22,10 @@ export class CustomerAccessSummaryResponseDto {
   @Expose()
   @ApiPropertyOptional({ nullable: true })
   emergencyPhone: string | null;
+
+  @Expose()
+  @ApiPropertyOptional({ nullable: true })
+  health_and_preferences: HealthAndPreferences;
 
   @Expose()
   @ApiPropertyOptional({ nullable: true })

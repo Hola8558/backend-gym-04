@@ -17,6 +17,7 @@ import { ManualCheckinDto } from './dto/manual-checkin.dto';
 import { ManualCheckinResponseDto } from './dto/manual-checkin-response.dto';
 import { EntryLogPublicResponseDto } from './dto/entry-log-public-response.dto';
 import type { RecordEntryParams } from './types/record-entry.params';
+import { readHealthAndPreferences } from '../users/utils/normalize-health-and-preferences.util';
 import { buildCustomerDisplayName } from './utils/build-customer-display-name';
 import { generateKioskAccessCode } from './utils/generate-kiosk-access-code.util';
 import {
@@ -352,6 +353,9 @@ export class EntryLogsService {
         userNumber: user.userNumber,
         fullName: buildCustomerDisplayName(user),
         emergencyPhone: user.profile?.emergencyPhone ?? null,
+        health_and_preferences: readHealthAndPreferences(
+          user.profile?.healthAndPreferences,
+        ),
         membershipPlanName: planName,
         membershipStatus: membership?.status ?? null,
         entries,

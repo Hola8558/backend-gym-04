@@ -1,4 +1,5 @@
 import { plainToInstance } from 'class-transformer';
+import { readHealthAndPreferences } from '../../users/utils/normalize-health-and-preferences.util';
 import { CustomerResponseDto } from '../dto/customer-response.dto';
 import { CustomerSource } from '../types/customer-source.type';
 import { resolveCustomerDisplayStatus } from './resolve-customer-display-status.util';
@@ -48,6 +49,9 @@ export function toCustomerResponseDto(
       phone: row.profile?.phone ?? null,
       emergency_phone: row.profile?.emergencyPhone ?? null,
       observations: row.profile?.observations ?? null,
+      health_and_preferences: readHealthAndPreferences(
+        row.profile?.healthAndPreferences,
+      ),
       activeMembershipName: membership?.membershipType?.name ?? null,
       membership_type_id: membership?.idMembershipType ?? null,
       membership_start_date: membership?.startDate

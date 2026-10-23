@@ -4,4 +4,7 @@ export interface CustomerListFilters {
   membershipId?: number;
   /** Coach user id, or "no coach" */
   coachId?: 'UNASSIGNED' | number;
+  /** Active routine or menu rows for this customer. */
+  coverage?: 'none' | 'some';
+  coverageOf?: 'routines' | 'menus';
 }

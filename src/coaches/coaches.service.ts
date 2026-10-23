@@ -332,10 +332,20 @@ export class CoachesService {
       select: {
         idUser: true,
         email: true,
+        userNumber: true,
         profile: {
           select: {
             name: true,
             lastName: true,
+            phone: true,
+          },
+        },
+        customerMemberships: {
+          where: { isCurrent: true, status: { not: GenericStatus.deleted } },
+          orderBy: [{ createdAt: 'desc' }, { idCustomerMembership: 'desc' }],
+          take: 1,
+          select: {
+            membershipType: { select: { name: true } },
           },
         },
       },

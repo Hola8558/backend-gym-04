@@ -34,6 +34,7 @@ import { RecoverCustomerDto } from './dto/recover-customer.dto';
 import { UnbanCustomerDto } from './dto/unban-customer.dto';
 import { CustomerBanHistoryEntryDto } from './dto/customer-ban-history-entry.dto';
 import { CustomerListFocusQueryDto } from './dto/customer-list-focus-query.dto';
+import { ExportCustomersQueryDto } from './dto/export-customers-query.dto';
 import { ListCustomersQueryDto } from './dto/list-customers-query.dto';
 import { DashboardMetricsResponseDto } from './dto/dashboard-metrics-response.dto';
 import { MobileCustomerLoginResponseDto } from './dto/mobile-customer-login-response.dto';
@@ -211,6 +212,45 @@ export class CustomersController {
       query.kind,
       query.id_user,
       query.limit ?? 50,
+    );
+  }
+
+  /** Full list for CSV export. Ignores pagination. Must stay before `@Get(':id')`. */
+  @Get('export')
+  @UseGuards(RolesGuard, FeatureGuard)
+  @Roles(UserRole.owner, UserRole.coach, UserRole.solo_coach)
+  @RequireFeature(...CUSTOMER_READ_FEATURES)
+  @ApiOperation({ summary: 'Export every customer row of one table, without pagination' })
+  exportCustomers(
+    @CurrentUser() user: JwtPayload,
+    @Query() query: ExportCustomersQueryDto,
+  ) {
+    const search = query.search?.trim() ?? '';
+    if (query.table === 'deleted') {
+      return this.customersService.findDeleted(
+        user.id_account,
+        1,
+        50,
+        search,
+        query.membershipTypeId,
+        true,
+      );
+    }
+    if (query.table === 'banned') {
+      return this.customersService.findBanned(user.id_account, 1, 50, search, true);
+    }
+    const listFilters = CustomersService.toListFilters({
+      status: query.status,
+      membershipId: query.membershipId,
+      coachId: query.coachId,
+    });
+    return this.customersService.findAll(
+      user.id_account,
+      1,
+      50,
+      search,
+      listFilters,
+      true,
     );
   }
 

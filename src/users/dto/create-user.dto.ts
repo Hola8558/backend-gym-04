@@ -6,6 +6,7 @@ import {
   IsEmail,
   IsEnum,
   IsNumber,
+  IsObject,
   IsOptional,
   IsString,
   MinLength,
@@ -53,6 +54,10 @@ export class CreateUserDto {
   observations?: string;
 
   @IsOptional()
+  @IsObject()
+  health_and_preferences?: Record<string, string[]>;
+
+  @IsOptional()
   @Type(() => Number)
   @IsNumber()
   coachId?: number;
@@ -61,6 +66,18 @@ export class CreateUserDto {
   @Type(() => Number)
   @IsNumber()
   membershipId?: number;
+
+  /** Calendar day `YYYY-MM-DD`. Falls back to today when a membership is assigned. */
+  @IsOptional()
+  @ValidateIf((_, v) => v != null && String(v).trim() !== '')
+  @IsDateString()
+  membership_start_date?: string | null;
+
+  /** Calendar day `YYYY-MM-DD`. Falls back to start plus the plan duration. */
+  @IsOptional()
+  @ValidateIf((_, v) => v != null && String(v).trim() !== '')
+  @IsDateString()
+  membership_end_date?: string | null;
 
   @IsOptional()
   @ValidateIf((_, v) => v != null && String(v).trim() !== '')

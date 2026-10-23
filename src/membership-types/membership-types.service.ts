@@ -118,15 +118,24 @@ export class MembershipTypesService {
     return { canDelete: true as const };
   }
 
-  async findAll(idAccount: number, statusQuery?: string) {
-    const explicitStatus = this.resolveListStatusFilter(statusQuery);
+  async findAll(idAccount: number, statusQuery?: string, search?: string) {
     const where: Prisma.MembershipTypeWhereInput = { idAccount };
-    if (explicitStatus !== null) {
-      where.status = explicitStatus;
+    if (statusQuery === 'all') {
+      where.status = { in: [GenericStatus.active, GenericStatus.inactive] };
     } else {
-      where.status = {
-        in: [GenericStatus.active],
-      };
+      const explicitStatus = this.resolveListStatusFilter(statusQuery);
+      if (explicitStatus !== null) {
+        where.status = explicitStatus;
+      } else {
+        where.status = { in: [GenericStatus.active] };
+      }
+    }
+    const term = search?.trim();
+    if (term) {
+      where.OR = [
+        { name: { contains: term, mode: 'insensitive' } },
+        { features: { contains: term, mode: 'insensitive' } },
+      ];
     }
 
     const rows = await this.prisma.membershipType.findMany({

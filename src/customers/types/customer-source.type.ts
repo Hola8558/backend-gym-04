@@ -1,4 +1,4 @@
-import { GenericStatus } from '@prisma/client';
+import { GenericStatus, Prisma } from '@prisma/client';
 
 export interface CustomerSource {
   idUser: number;
@@ -13,6 +13,7 @@ export interface CustomerSource {
     phone: string | null;
     emergencyPhone: string | null;
     observations: string | null;
+    healthAndPreferences: Prisma.JsonValue | null;
     createdAt: Date | null;
     enrollmentDate?: Date | null;
     coach: {

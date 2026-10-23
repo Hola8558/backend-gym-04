@@ -3,6 +3,7 @@ import {
   IsDateString,
   IsEmail,
   IsNumber,
+  IsObject,
   IsOptional,
   IsString,
   ValidateIf,
@@ -37,6 +38,11 @@ export class UpdateUserDto {
   @IsOptional()
   @IsString()
   observations?: string;
+
+  @IsOptional()
+  @ValidateIf((_, value) => value != null)
+  @IsObject()
+  health_and_preferences?: Record<string, string[]> | null;
 
   @IsOptional()
   @Type(() => Number)
