@@ -32,7 +32,7 @@ export function readQuickAccessDocument(value: unknown): {
 } {
   const empty: QuickAccessDocument = { filters: {}, qaccess: [] };
   if (value == null || typeof value !== 'object' || Array.isArray(value)) {
-    return { document: empty, changed: false };
+    return { document: empty, changed: value == null };
   }
   const record = value as Record<string, unknown>;
   const shaped = 'filters' in record || 'qaccess' in record;

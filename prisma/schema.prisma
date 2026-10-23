@@ -130,7 +130,7 @@ model AccountDetail {
   stripeCustomerId String?  @map("stripe_customer_id") @db.Text
   mandatoryFields  String[] @default(["phone", "emergency_phone", "name", "email", "lastname", "enrollment_date"]) @map("mandatory_fields")
   preferences      String[] @default(["alergias", "lesiones"]) @map("preferences")
-  filtersAndQaccess Json     @default("{}") @map("filters_and_qaccess")
+  filtersAndQaccess Json?    @default("{}") @map("filters_and_qaccess")
 
   account Account @relation(fields: [idAccount], references: [idAccount], onDelete: Cascade)
 
