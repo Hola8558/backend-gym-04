@@ -1,5 +1,5 @@
 import { GenericStatus, Prisma } from '@prisma/client';
-import { startOfUtcDay } from '../../common/utils/utc-date.util';
+import { addUtcDays, startOfUtcDay } from '../../common/utils/utc-date.util';
 
 const currentNotDeleted = {
   isCurrent: true,
@@ -55,5 +55,26 @@ export function buildMembershipManagedInactiveCustomerWhere(
         ],
       },
     ],
+  };
+}
+
+/** Current active membership ending today through the next 7 UTC days, inclusive. */
+export function buildMembershipExpiringSoonCustomerWhere(
+  todayStart: Date = startOfUtcDay(new Date()),
+): Prisma.UserWhereInput {
+  const weekEndInclusive = addUtcDays(todayStart, 7);
+  return {
+    status: { notIn: [GenericStatus.deleted, GenericStatus.banned] },
+    customerMemberships: {
+      some: {
+        isCurrent: true,
+        status: GenericStatus.active,
+        endDate: {
+          not: null,
+          gte: todayStart,
+          lte: weekEndInclusive,
+        },
+      },
+    },
   };
 }

@@ -9,7 +9,7 @@ import {
   Min,
 } from 'class-validator';
 
-const LIST_STATUSES = ['ACTIVE', 'INACTIVE'] as const;
+const LIST_STATUSES = ['ACTIVE', 'INACTIVE', 'EXPIRING'] as const;
 export type CustomerListQueryStatus = (typeof LIST_STATUSES)[number];
 
 export class ListCustomersQueryDto {
@@ -40,7 +40,7 @@ export class ListCustomersQueryDto {
   @MaxLength(200)
   q?: string;
 
-  @ApiPropertyOptional({ enum: ['ACTIVE', 'INACTIVE'] })
+  @ApiPropertyOptional({ enum: ['ACTIVE', 'INACTIVE', 'EXPIRING'] })
   @IsOptional()
   @IsIn(LIST_STATUSES)
   status?: CustomerListQueryStatus;

@@ -5,7 +5,7 @@ import { IsIn, IsInt, IsOptional, IsString, MaxLength, Min } from 'class-validat
 const EXPORT_TABLES = ['active', 'deleted', 'banned'] as const;
 export type CustomerExportTable = (typeof EXPORT_TABLES)[number];
 
-const LIST_STATUSES = ['ACTIVE', 'INACTIVE'] as const;
+const LIST_STATUSES = ['ACTIVE', 'INACTIVE', 'EXPIRING'] as const;
 
 export class ExportCustomersQueryDto {
   @ApiProperty({ enum: EXPORT_TABLES })

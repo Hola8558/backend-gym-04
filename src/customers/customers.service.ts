@@ -64,6 +64,7 @@ import {
 import { assertOwnerOrSoloCoachAccount } from '../common/utils/assert-owner-or-solo-coach-account.util';
 import { UpdateCurrentMembershipDto } from './dto/update-current-membership.dto';
 import {
+  buildMembershipExpiringSoonCustomerWhere,
   buildMembershipManagedActiveCustomerWhere,
   buildMembershipManagedInactiveCustomerWhere,
 } from './utils/build-membership-managed-customer-status-where.util';
@@ -437,7 +438,7 @@ export class CustomersService {
       return undefined;
     }
     const out: CustomerListFilters = {};
-    if (hasStatus && (dto.status === 'ACTIVE' || dto.status === 'INACTIVE')) {
+    if (hasStatus && (dto.status === 'ACTIVE' || dto.status === 'INACTIVE' || dto.status === 'EXPIRING')) {
       out.status = dto.status;
     }
     if (hasMembership) {
@@ -1225,7 +1226,9 @@ export class CustomersService {
     const normalizedQuery = search.trim();
 
     let statusWhere: Prisma.UserWhereInput;
-    if (usesMembershipManagedStatus) {
+    if (filters?.status === 'EXPIRING') {
+      statusWhere = buildMembershipExpiringSoonCustomerWhere(todayStart);
+    } else if (usesMembershipManagedStatus) {
       if (filters?.status === 'ACTIVE') {
         statusWhere = buildMembershipManagedActiveCustomerWhere(todayStart);
       } else if (filters?.status === 'INACTIVE') {
