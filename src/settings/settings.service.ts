@@ -15,6 +15,7 @@ import {
 import { toStyleResponseDto, type StyleRecord } from './utils/style-response.mapper';
 import { StyleResponseDto } from './dto/style-response.dto';
 import { GetStyleQueryDto } from './dto/get-style-query.dto';
+import { resolveUnitSystem } from '../accounts/utils/resolve-unit-system.util';
 import { generateChangeKey } from './utils/generate-change-key.util';
 import { buildConditionalStyleRecord } from './utils/build-conditional-style-response.util';
 import { normalizeMandatoryCustomerFields } from '../common/constants/customer-form-field-ids.const';
@@ -58,6 +59,7 @@ export class SettingsService {
             colorKeyChange: true,
             nameKeyChange: true,
             maxCapacity: true,
+            unitSystem: true,
           },
         },
       },
@@ -80,6 +82,7 @@ export class SettingsService {
       maxCapacity: canViewMaxCapacity
         ? (account.accountDetail?.maxCapacity ?? null)
         : null,
+      unitSystem: resolveUnitSystem(account.accountDetail?.unitSystem),
       logoKeyChange: account.accountDetail?.logoKeyChange ?? null,
       colorKeyChange: account.accountDetail?.colorKeyChange ?? null,
       nameKeyChange: account.accountDetail?.nameKeyChange ?? null,
@@ -171,6 +174,7 @@ export class SettingsService {
         colorKeyChange?: string;
         nameKeyChange?: string;
         maxCapacity?: number;
+        unitSystem?: string;
       } = {};
 
       if (dto.color !== null) {
@@ -195,6 +199,10 @@ export class SettingsService {
         detailData.maxCapacity = dto.maxCapacity;
       }
 
+      if (dto.unitSystem !== undefined) {
+        detailData.unitSystem = resolveUnitSystem(dto.unitSystem);
+      }
+
       const accountDetail =
         Object.keys(detailData).length > 0
           ? await tx.accountDetail.update({
@@ -208,6 +216,7 @@ export class SettingsService {
                 colorKeyChange: true,
                 nameKeyChange: true,
                 maxCapacity: true,
+                unitSystem: true,
               },
             })
           : await tx.accountDetail.findUniqueOrThrow({
@@ -220,6 +229,7 @@ export class SettingsService {
                 colorKeyChange: true,
                 nameKeyChange: true,
                 maxCapacity: true,
+                unitSystem: true,
               },
             });
 
@@ -241,6 +251,7 @@ export class SettingsService {
         favicon: accountDetail.favicon,
         gymName: accountRow.name,
         maxCapacity: hasMaxCapacityFeature ? accountDetail.maxCapacity : null,
+        unitSystem: resolveUnitSystem(accountDetail.unitSystem),
         logoKeyChange: accountDetail.logoKeyChange,
         colorKeyChange: accountDetail.colorKeyChange,
         nameKeyChange: accountDetail.nameKeyChange,

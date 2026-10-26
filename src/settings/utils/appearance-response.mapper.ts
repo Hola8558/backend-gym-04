@@ -7,6 +7,7 @@ export type AppearanceRecord = {
   favicon: string | null;
   gymName: string | null;
   maxCapacity: number | null;
+  unitSystem: string;
   logoKeyChange: string | null;
   colorKeyChange: string | null;
   nameKeyChange: string | null;

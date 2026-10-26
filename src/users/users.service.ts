@@ -51,6 +51,7 @@ function hiddenEmail(email: string | null): string | null {
 }
 
 export type CreateUserResponse = {
+  id: number;
   user_number: string | null;
   email: string | null;
   name: string | null;
@@ -354,6 +355,7 @@ export class UsersService {
       const p = row.profile!;
 
       return {
+        id: row.idUser,
         user_number: row.userNumber,
         email: hiddenEmail(row.email),
         name: p.name,
@@ -516,6 +518,7 @@ export class UsersService {
     const profile = created.profile!;
 
     return {
+      id: created.idUser,
       user_number: created.userNumber,
       email: hiddenEmail(created.email),
       name: profile.name,

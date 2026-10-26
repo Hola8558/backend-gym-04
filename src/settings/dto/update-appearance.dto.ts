@@ -1,5 +1,6 @@
 import { ApiProperty } from '@nestjs/swagger';
 import {
+  IsIn,
   IsInt,
   IsOptional,
   IsString,
@@ -9,6 +10,7 @@ import {
   MinLength,
   ValidateIf,
 } from 'class-validator';
+import { UNIT_SYSTEMS } from '../../accounts/types/unit-system.type';
 
 export class UpdateAppearanceDto {
   @ApiProperty({
@@ -61,4 +63,14 @@ export class UpdateAppearanceDto {
   @IsInt()
   @Min(1)
   maxCapacity?: number;
+
+  @ApiProperty({
+    required: false,
+    enum: UNIT_SYSTEMS,
+    example: 'metric',
+    description: 'Body weight and measurement units; omit when unchanged',
+  })
+  @IsOptional()
+  @IsIn(UNIT_SYSTEMS, { message: 'SETTINGS.ERRORS.INVALID_UNIT_SYSTEM' })
+  unitSystem?: (typeof UNIT_SYSTEMS)[number];
 }

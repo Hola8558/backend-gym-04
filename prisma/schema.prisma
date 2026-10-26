@@ -103,6 +103,7 @@ model Account {
   activityLogs        ActivityLog[]
   customerBans        CustomerBan[]
   entryLogs               EntryLog[]
+  clientMetrics           ClientMetric[]
   crowdmeters             Crowdmeter[]
   categories              Category[]
   recipes                 Recipe[]
@@ -131,6 +132,8 @@ model AccountDetail {
   mandatoryFields  String[] @default(["phone", "emergency_phone", "name", "email", "lastname", "enrollment_date"]) @map("mandatory_fields")
   preferences      String[] @default(["alergias", "lesiones"]) @map("preferences")
   filtersAndQaccess Json?    @default("{}") @map("filters_and_qaccess")
+  globalMeasurements Json?  @map("global_measurements")
+  unitSystem         String? @default("metric") @map("unit_system") @db.VarChar(16)
 
   account Account @relation(fields: [idAccount], references: [idAccount], onDelete: Cascade)
 
@@ -158,6 +161,7 @@ model User {
   membershipHistories MembershipHistory[]
   routines            Routine[]
   entryLogs           EntryLog[]
+  clientMetrics       ClientMetric[]
   featureFlags        FeatureFlag[]
   coachedProfiles     Profile[]           @relation("ProfileCoach")
   activityLogs        ActivityLog[]
@@ -318,6 +322,24 @@ model EntryLog {
 
   @@index([idAccount, entryDate])
   @@map("entry_logs")
+}
+
+/// Body check-in. Weight is its own column; circumference and percentage values live in `measurements`.
+model ClientMetric {
+  idMeasure    String   @id @default(uuid()) @map("id_measure") @db.Uuid
+  idAccount    Int      @map("id_account")
+  idUser       Int      @map("id_user")
+  date         DateTime  @default(now()) @map("date") @db.Timestamptz(6)
+  weight       Decimal?  @map("weight") @db.Decimal(5, 2)
+  measurements Json      @default("{}") @map("measurements")
+  editedAt     DateTime? @map("edited_at") @db.Timestamp(6)
+  deletedAt    DateTime? @map("deleted_at") @db.Timestamp(6)
+
+  account Account @relation(fields: [idAccount], references: [idAccount], onDelete: Cascade)
+  user    User    @relation(fields: [idUser], references: [idUser], onDelete: Cascade)
+
+  @@index([idAccount, idUser, date])
+  @@map("client_metrics")
 }
 
 model Crowdmeter {

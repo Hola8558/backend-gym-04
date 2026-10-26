@@ -8,6 +8,9 @@ import { UsersModule } from '../users/users.module';
 import { CustomersDeletedController } from './customers-deleted.controller';
 import { CustomersController } from './customers.controller';
 import { CustomersImportService } from './customers-import.service';
+import { CustomersMetricsCatalogController } from './metrics/customers-metrics-catalog.controller';
+import { CustomersMetricsController } from './metrics/customers-metrics.controller';
+import { CustomersMetricsService } from './metrics/customers-metrics.service';
 import { CustomersService } from './customers.service';
 
 @Module({
@@ -18,8 +21,18 @@ import { CustomersService } from './customers.service';
     RoutinesModule,
     TasksModule,
   ],
-  controllers: [CustomersController, CustomersDeletedController],
-  providers: [CustomersService, CustomersImportService, RolesGuard],
+  controllers: [
+    CustomersController,
+    CustomersDeletedController,
+    CustomersMetricsCatalogController,
+    CustomersMetricsController,
+  ],
+  providers: [
+    CustomersService,
+    CustomersImportService,
+    CustomersMetricsService,
+    RolesGuard,
+  ],
   exports: [CustomersService],
 })
 export class CustomersModule {}

@@ -27,6 +27,14 @@ export class AppearanceResponseDto {
   maxCapacity: number | null;
 
   @Expose()
+  @ApiProperty({
+    example: 'metric',
+    enum: ['metric', 'imperial'],
+    description: 'Body weight and measurement units. Null in the database is returned as metric.',
+  })
+  unitSystem: string;
+
+  @Expose()
   @ApiProperty({ nullable: true, description: 'Cache invalidation token for logo' })
   logoKeyChange: string | null;
 

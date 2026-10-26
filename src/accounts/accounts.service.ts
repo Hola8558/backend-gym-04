@@ -13,7 +13,9 @@ import * as bcrypt from 'bcrypt';
 import { isSoloCoachAccountType } from '../common/utils/is-solo-coach-account-type.util';
 import { resolveInitialFeatureFlagStatus } from '../common/utils/resolve-initial-feature-flag-status.util';
 import { PrismaService } from '../core/prisma/prisma.service';
+import { DEFAULT_GLOBAL_MEASUREMENTS } from './constants/default-global-measurements.const';
 import { CUSTOMERS_LIMIT_BY_TYPE } from './constants/customers-limit-by-type.const';
+import { resolveUnitSystem } from './utils/resolve-unit-system.util';
 import { DEFAULT_MANDATORY_CUSTOMER_FIELDS } from '../common/constants/customer-form-field-ids.const';
 import { EmailStatusValidationResponseDto } from './dto/email-status-validation-response.dto';
 import { SoftDeleteAccountResponseDto } from './dto/soft-delete-account-response.dto';
@@ -98,6 +100,10 @@ export class AccountsService {
               customersLimit,
               mandatoryFields: [...DEFAULT_MANDATORY_CUSTOMER_FIELDS],
               preferences: ['alergias', 'lesiones'],
+              globalMeasurements: [
+                ...DEFAULT_GLOBAL_MEASUREMENTS,
+              ] as unknown as Prisma.InputJsonValue,
+              unitSystem: resolveUnitSystem(null),
               ...(dto.stripeCustomerId
                 ? { stripeCustomerId: dto.stripeCustomerId }
                 : {}),
