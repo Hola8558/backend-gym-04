@@ -28,6 +28,7 @@ import { CustomerAccessLogItemDto } from './dto/customer-access-log-item.dto';
 import { CustomerAccessSummaryResponseDto } from './dto/customer-access-summary-response.dto';
 import { EntryLogListQueryDto } from './dto/entry-log-list-query.dto';
 import { EntryLogsPaginatedResponseDto } from './dto/entry-logs-paginated-response.dto';
+import { parseAccessWindowDays } from './utils/parse-access-window-days.util';
 import { KioskAccessCodeResponseDto } from './dto/kiosk-access-code-response.dto';
 import { MarkAttendanceDayDto } from './dto/mark-attendance-day.dto';
 import { UnmarkAttendanceDayQueryDto } from './dto/unmark-attendance-day-query.dto';
@@ -69,17 +70,20 @@ export class EntryLogsController {
 
   @Get('user/:idUser')
   @ApiOperation({
-    summary: 'Customer header + entry logs for the last 30 days (UTC window)',
+    summary:
+      'Customer header + entry logs. Default window is 30 days; `days` can request up to retention.',
   })
   @ApiResponse({ status: 200, type: CustomerAccessSummaryResponseDto })
   @ApiResponse({ status: 404, description: 'User not in account' })
   findCustomerAccess(
     @CurrentUser() user: JwtPayload,
     @Param('idUser', ParseIntPipe) idUser: number,
+    @Query('days') days?: string,
   ) {
     return this.entryLogsService.findCustomerAccessSummary(
       user.id_account,
       idUser,
+      parseAccessWindowDays(days),
     );
   }
 

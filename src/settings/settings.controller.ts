@@ -27,6 +27,8 @@ import { UpdateAppearanceDto } from './dto/update-appearance.dto';
 import { UpdateMandatoryFieldsDto } from './dto/update-mandatory-fields.dto';
 import { HealthPreferencesResponseDto } from './dto/health-preferences-response.dto';
 import { UpdateHealthPreferencesDto } from './dto/update-health-preferences.dto';
+import { AccountMeasurementsResponseDto } from './dto/account-measurements-response.dto';
+import { UpdateAccountMeasurementsDto } from './dto/update-account-measurements.dto';
 import { QuickAccessResponseDto } from './dto/quick-access-response.dto';
 import { QuickAccessShortcutsResponseDto } from './dto/quick-access-shortcuts-response.dto';
 import { UpdateQuickAccessDto } from './dto/update-quick-access.dto';
@@ -142,6 +144,33 @@ export class SettingsController {
     @Body() dto: UpdateHealthPreferencesDto,
   ) {
     return this.settingsService.updateHealthPreferences(
+      user.id_account,
+      user.sub,
+      dto,
+    );
+  }
+
+  @Get('body-measurements')
+  @ApiOperation({
+    summary: 'Body-measurement catalog for the current account, including hidden ones',
+  })
+  @ApiResponse({ status: 200, type: AccountMeasurementsResponseDto })
+  getAccountMeasurements(@CurrentUser() user: JwtPayload) {
+    return this.settingsService.getAccountMeasurements(user.id_account);
+  }
+
+  @Patch('body-measurements')
+  @UseGuards(RolesGuard)
+  @Roles(UserRole.owner, UserRole.solo_coach)
+  @ApiOperation({
+    summary: 'Add, rename, hide, or restore an account body measurement',
+  })
+  @ApiResponse({ status: 200, type: AccountMeasurementsResponseDto })
+  updateAccountMeasurements(
+    @CurrentUser() user: JwtPayload,
+    @Body() dto: UpdateAccountMeasurementsDto,
+  ) {
+    return this.settingsService.updateAccountMeasurements(
       user.id_account,
       user.sub,
       dto,

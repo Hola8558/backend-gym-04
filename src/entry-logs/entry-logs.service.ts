@@ -4,7 +4,10 @@ import { GenericStatus, Prisma, UserRole } from '@prisma/client';
 import { plainToInstance } from 'class-transformer';
 import type { JwtPayload } from '../auth/jwt.strategy';
 import { PrismaService } from '../core/prisma/prisma.service';
-import { ENTRY_LOG_RETENTION_DAYS } from '../common/constants/entry-log-retention-days.const';
+import {
+  ENTRY_LOG_EDIT_WINDOW_DAYS,
+  ENTRY_LOG_RETENTION_DAYS,
+} from '../common/constants/entry-log-retention-days.const';
 import { subUtcDays } from '../common/utils/utc-date.util';
 import { CustomerAccessLogItemDto } from './dto/customer-access-log-item.dto';
 import { CustomerAccessMembershipSpanDto } from './dto/customer-access-membership-span.dto';
@@ -25,7 +28,7 @@ import {
   parseCheckinDateTime,
 } from './utils/parse-checkin-datetime.util';
 
-const HISTORY_WINDOW_DAYS = ENTRY_LOG_RETENTION_DAYS;
+const HISTORY_WINDOW_DAYS = ENTRY_LOG_EDIT_WINDOW_DAYS;
 
 type HistorySortField =
   | 'entryDate'
@@ -270,8 +273,10 @@ export class EntryLogsService {
   async findCustomerAccessSummary(
     idAccount: number,
     idUser: number,
+    windowDays: number = HISTORY_WINDOW_DAYS,
   ): Promise<CustomerAccessSummaryResponseDto> {
-    const since = subUtcDays(new Date(), HISTORY_WINDOW_DAYS);
+    const days = Math.min(ENTRY_LOG_RETENTION_DAYS, Math.max(1, windowDays));
+    const since = subUtcDays(new Date(), days);
 
     const user = await this.prisma.user.findFirst({
       where: {

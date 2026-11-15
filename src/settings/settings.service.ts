@@ -26,6 +26,14 @@ import { assertMandatoryFieldsManager } from './utils/assert-mandatory-fields-ma
 import { HealthPreferencesResponseDto } from './dto/health-preferences-response.dto';
 import { UpdateHealthPreferencesDto } from './dto/update-health-preferences.dto';
 import { toHealthPreferencesResponseDto } from './utils/health-preferences-response.mapper';
+import { AccountMeasurementsResponseDto } from './dto/account-measurements-response.dto';
+import { UpdateAccountMeasurementsDto } from './dto/update-account-measurements.dto';
+import { toAccountMeasurementsResponseDto } from './utils/account-measurements-response.mapper';
+import {
+  planAccountMeasurementAction,
+  resolveAccountMeasurements,
+} from '../accounts/utils/account-measurements.util';
+import type { AccountMeasurement } from '../accounts/types/account-measurement.type';
 import {
   HEALTH_PREFERENCE_DELETED_SUFFIX,
   healthPreferenceBaseName,
@@ -335,6 +343,61 @@ export class SettingsService {
       });
     });
     return toHealthPreferencesResponseDto(planned.next);
+  }
+
+  async getAccountMeasurements(
+    idAccount: number,
+  ): Promise<AccountMeasurementsResponseDto> {
+    const measurements = await this.loadAccountMeasurements(idAccount);
+    return toAccountMeasurementsResponseDto(measurements);
+  }
+
+  async updateAccountMeasurements(
+    idAccount: number,
+    idUser: number,
+    dto: UpdateAccountMeasurementsDto,
+  ): Promise<AccountMeasurementsResponseDto> {
+    await assertMandatoryFieldsManager(this.prisma, idAccount, idUser);
+    const current = await this.loadAccountMeasurements(idAccount);
+    const detail = await this.prisma.accountDetail.findUnique({
+      where: { idAccount },
+      select: { idAccountDetail: true },
+    });
+    if (!detail) {
+      throw new NotFoundException('SETTINGS.ERRORS.ACCOUNT_NOT_FOUND');
+    }
+
+    const planned = planAccountMeasurementAction(current, {
+      action: dto.action,
+      key: dto.key ?? '',
+      label: dto.label ?? '',
+      unitType: dto.unit_type,
+      deletedAt: new Date().toISOString(),
+    });
+    if (planned.ok === false) {
+      throw new BadRequestException(`SETTINGS.ERRORS.${planned.error}`);
+    }
+
+    await this.prisma.accountDetail.update({
+      where: { idAccountDetail: detail.idAccountDetail },
+      data: {
+        globalMeasurements: planned.next as unknown as Prisma.InputJsonValue,
+      },
+    });
+    return toAccountMeasurementsResponseDto(planned.next);
+  }
+
+  private async loadAccountMeasurements(
+    idAccount: number,
+  ): Promise<AccountMeasurement[]> {
+    const detail = await this.prisma.accountDetail.findUnique({
+      where: { idAccount },
+      select: { globalMeasurements: true },
+    });
+    if (!detail) {
+      throw new NotFoundException('SETTINGS.ERRORS.ACCOUNT_NOT_FOUND');
+    }
+    return resolveAccountMeasurements(detail.globalMeasurements);
   }
 
   private async loadHealthPreferences(idAccount: number): Promise<string[]> {

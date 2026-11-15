@@ -297,6 +297,20 @@ export class CustomersController {
     );
   }
 
+  /** Must be registered before `@Get(':id')`. Public profile link uses user_number, not the primary key. */
+  @Get('number/:userNumber')
+  @UseGuards(RolesGuard, FeatureGuard)
+  @Roles(UserRole.owner, UserRole.coach, UserRole.solo_coach)
+  @RequireFeature(...CUSTOMER_READ_FEATURES)
+  @ApiOperation({ summary: 'Customer in the current account by user_number' })
+  @ApiOkResponse({ type: CustomerResponseDto })
+  findOneByUserNumber(
+    @CurrentUser() user: JwtPayload,
+    @Param('userNumber') userNumber: string,
+  ) {
+    return this.customersService.findOneByUserNumber(userNumber, user.id_account);
+  }
+
   /** Must be registered before `@Get(':id')` or the path is parsed as a single `id` param. */
   @Get(':id/ban-history')
   @UseGuards(RolesGuard, FeatureGuard)

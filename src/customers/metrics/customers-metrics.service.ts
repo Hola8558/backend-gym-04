@@ -15,6 +15,7 @@ import { measurementUnitSymbol } from './utils/measurement-unit-symbol.util';
 import { normalizeClientMetricInput } from './utils/normalize-client-metric-input.util';
 import { formatMetricDateOnly, parseMetricDate } from './utils/parse-metric-date.util';
 import { readGlobalMeasurements } from './utils/read-global-measurements.util';
+import { retainHiddenMeasurements } from './utils/retain-hidden-measurements.util';
 import { toClientMetricHistoryResponse } from './utils/to-client-metric-history-response.util';
 import { toClientMetricsResponse } from './utils/to-client-metrics-response.util';
 import { toMetricCatalogResponse } from './utils/to-metric-catalog-response.util';
@@ -110,21 +111,30 @@ export class CustomersMetricsService {
     if (normalized === 'INVALID_VALUE') {
       throw new BadRequestException('CUSTOMERS.METRICS.ERRORS.INVALID_VALUE');
     }
-    if (normalized === 'EMPTY') {
+    const visible =
+      normalized === 'EMPTY'
+        ? { weight: null, measurements: {} as Record<string, number> }
+        : normalized;
+    const measurements = retainHiddenMeasurements(
+      readStoredMeasurements(existing.measurements),
+      visible.measurements,
+      new Set(catalog.measurements.map((field) => field.key)),
+    );
+    if (visible.weight == null && Object.keys(measurements).length === 0) {
       throw new BadRequestException('CUSTOMERS.METRICS.ERRORS.EMPTY');
     }
 
     const changed = !sameMetricContent(existing, {
       date,
-      weight: normalized.weight,
-      measurements: normalized.measurements,
+      weight: visible.weight,
+      measurements,
     });
     await this.prisma.clientMetric.update({
       where: { idMeasure },
       data: {
         date,
-        weight: normalized.weight,
-        measurements: normalized.measurements as Prisma.InputJsonValue,
+        weight: visible.weight,
+        measurements: measurements as Prisma.InputJsonValue,
         ...(changed ? { editedAt: new Date() } : {}),
       },
     });

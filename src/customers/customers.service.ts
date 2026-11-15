@@ -407,6 +407,29 @@ export class CustomersService {
     return this.mapToCustomerResponseDto(id_account, row as CustomerSource);
   }
 
+  async findOneByUserNumber(
+    userNumber: string,
+    id_account: number,
+  ): Promise<CustomerResponseDto> {
+    const code = userNumber.trim();
+    if (!/^\d{5}$/.test(code)) {
+      throw new NotFoundException('CUSTOMERS.ERRORS.CUSTOMER_NOT_FOUND');
+    }
+    const user = await this.prisma.user.findFirst({
+      where: {
+        userNumber: code,
+        idAccount: id_account,
+        role: UserRole.customer,
+        status: { not: GenericStatus.deleted },
+      },
+      select: { idUser: true },
+    });
+    if (!user) {
+      throw new NotFoundException('CUSTOMERS.ERRORS.CUSTOMER_NOT_FOUND');
+    }
+    return this.findOne(user.idUser, id_account);
+  }
+
   async searchCustomers(
     query: string,
     accountId: number,
