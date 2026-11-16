@@ -1,4 +1,5 @@
 import {
+  ConflictException,
   Injectable,
   InternalServerErrorException,
   NotFoundException,
@@ -18,9 +19,13 @@ import { CUSTOMERS_LIMIT_BY_TYPE } from './constants/customers-limit-by-type.con
 import { resolveUnitSystem } from './utils/resolve-unit-system.util';
 import { DEFAULT_MANDATORY_CUSTOMER_FIELDS } from '../common/constants/customer-form-field-ids.const';
 import { EmailStatusValidationResponseDto } from './dto/email-status-validation-response.dto';
+import { ProvisionAccountDto } from './dto/provision-account.dto';
 import { SoftDeleteAccountResponseDto } from './dto/soft-delete-account-response.dto';
 import { StripeBillingService } from './stripe-billing.service';
+import type { BusinessAccountStripeLink } from './types/business-account-stripe-link.type';
 import type { CreateAccountWithUserInput } from './types/create-account-with-user-input.type';
+import type { LinkStripeBillingInput } from './types/link-stripe-billing-input.type';
+import type { StripeBillingLinkResult } from './types/stripe-billing-link-result.type';
 import { mapAccountStatusToEmailValidationStatus } from './utils/map-account-status-to-email-validation-status.util';
 import { softDeleteAccountCascade } from './utils/soft-delete-account-cascade.util';
 import { toEmailStatusValidationResponseDto } from './utils/to-email-status-validation-response.mapper';
@@ -167,6 +172,132 @@ export class AccountsService {
         email: hiddenEmail(user.email),
       };
     });
+  }
+
+  async provisionAccountWithoutStripe(
+    dto: ProvisionAccountDto,
+  ): Promise<CreateAccountResponse> {
+    const email = dto.email.trim();
+    const existing = await this.findBusinessAccountsForStripeLink(email);
+    if (existing.length > 0) {
+      throw new ConflictException('ACCOUNTS.ERRORS.EMAIL_ALREADY_EXISTS');
+    }
+
+    return this.createAccountWithUser({
+      name: dto.name.trim(),
+      type: dto.type,
+      email,
+      password: null,
+      branch: dto.branch,
+      requiresPasswordChange: true,
+    });
+  }
+
+  async findBusinessAccountsForStripeLink(
+    email: string,
+  ): Promise<BusinessAccountStripeLink[]> {
+    const users = await this.prisma.user.findMany({
+      where: {
+        email: { equals: email.trim(), mode: 'insensitive' },
+        status: { not: GenericStatus.deleted },
+        role: { in: [UserRole.owner, UserRole.solo_coach] },
+        account: {
+          status: {
+            notIn: [GenericStatus.deleted, GenericStatus.banned],
+          },
+        },
+      },
+      select: {
+        idAccount: true,
+        account: {
+          select: {
+            accountDetail: {
+              select: { stripeCustomerId: true },
+            },
+          },
+        },
+      },
+    });
+
+    const byAccount = new Map<number, BusinessAccountStripeLink>();
+    for (const user of users) {
+      if (byAccount.has(user.idAccount)) {
+        continue;
+      }
+      byAccount.set(user.idAccount, {
+        idAccount: user.idAccount,
+        stripeCustomerId: user.account.accountDetail?.stripeCustomerId ?? null,
+      });
+    }
+    return [...byAccount.values()];
+  }
+
+  async linkStripeBillingToAccount(
+    input: LinkStripeBillingInput,
+  ): Promise<StripeBillingLinkResult> {
+    const account = await this.prisma.account.findUnique({
+      where: { idAccount: input.idAccount },
+      select: {
+        status: true,
+        accountDetail: { select: { stripeCustomerId: true } },
+      },
+    });
+    if (
+      !account ||
+      account.status === GenericStatus.deleted ||
+      account.status === GenericStatus.banned
+    ) {
+      return 'unavailable';
+    }
+    if (!account.accountDetail) {
+      return 'missing_detail';
+    }
+
+    const stored = account.accountDetail.stripeCustomerId;
+    const current = stored?.trim() ?? '';
+    if (current.length > 0 && current !== input.stripeCustomerId) {
+      return 'conflict';
+    }
+
+    let result: StripeBillingLinkResult = 'linked';
+    await this.prisma.$transaction(async (tx: Prisma.TransactionClient) => {
+      const written = await tx.accountDetail.updateMany({
+        where: {
+          idAccount: input.idAccount,
+          stripeCustomerId: stored,
+        },
+        data: {
+          stripeCustomerId: input.stripeCustomerId,
+          ...(input.type
+            ? { customersLimit: CUSTOMERS_LIMIT_BY_TYPE[input.type] }
+            : {}),
+        },
+      });
+
+      const detailNow = await tx.accountDetail.findUnique({
+        where: { idAccount: input.idAccount },
+        select: { stripeCustomerId: true },
+      });
+      const linkedId = detailNow?.stripeCustomerId?.trim() ?? '';
+      if (written.count === 0 && linkedId !== input.stripeCustomerId) {
+        result = 'conflict';
+        return;
+      }
+      if (linkedId !== input.stripeCustomerId) {
+        result = 'conflict';
+        return;
+      }
+
+      await tx.account.update({
+        where: { idAccount: input.idAccount },
+        data: {
+          ...(input.status ? { status: input.status } : {}),
+          ...(input.type ? { type: input.type } : {}),
+        },
+      });
+    });
+
+    return result;
   }
 
   async findIdAccountsByStripeCustomerId(

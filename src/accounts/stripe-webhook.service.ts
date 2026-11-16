@@ -25,8 +25,10 @@ import { extractSubscriptionCustomerId } from './utils/extract-subscription-cust
 import { extractSubscriptionPriceId } from './utils/extract-subscription-price-id.util';
 import { isCheckoutSession } from './utils/is-checkout-session.util';
 import { isStripeSubscription } from './utils/is-stripe-subscription.util';
+import type { StripePriceIdCatalog } from './types/stripe-price-id-catalog.type';
 import { mapStripePriceIdToAccountType } from './utils/map-stripe-price-id-to-account-type.util';
 import { mapStripeSubscriptionStatusToAccountStatus } from './utils/map-stripe-subscription-status-to-account-status.util';
+import { resolveKnownStripeAccountType } from './utils/resolve-known-stripe-account-type.util';
 
 @Injectable()
 export class StripeWebhookService {
@@ -104,24 +106,46 @@ export class StripeWebhookService {
 
     const subscription =
       await this.stripe.subscriptions.retrieve(subscriptionId);
-    const type = mapStripePriceIdToAccountType(
-      extractSubscriptionPriceId(subscription),
-      {
-        coach: this.configService.get<string>('STRIPE_PRICE_ID_COACH')?.trim(),
-        studio: this.configService.get<string>('STRIPE_PRICE_ID_STUDIO')?.trim(),
-        pro: this.configService.get<string>('STRIPE_PRICE_ID_PRO')?.trim(),
-        business: this.configService
-          .get<string>('STRIPE_PRICE_ID_BUSINESS')
-          ?.trim(),
-        personalized: this.configService
-          .get<string>('STRIPE_PRICE_ID_PERSONALIZED')
-          ?.trim(),
-      },
+    const priceIds = extractSubscriptionPriceId(subscription);
+    const catalog = this.readPriceCatalog();
+    const knownType = resolveKnownStripeAccountType(priceIds, catalog);
+    const accountStatus = mapStripeSubscriptionStatusToAccountStatus(
+      subscription.status,
     );
+    const matches =
+      await this.accountsService.findBusinessAccountsForStripeLink(email);
+
+    if (matches.length > 1) {
+      this.logger.error(
+        `Stripe checkout conflict; ${matches.length} business accounts share this email. Customer ${stripeCustomerId} was not linked.`,
+      );
+      return;
+    }
+
+    if (matches.length === 1) {
+      const match = matches[0];
+      const result = await this.accountsService.linkStripeBillingToAccount({
+        idAccount: match.idAccount,
+        stripeCustomerId,
+        status: accountStatus,
+        type: knownType,
+      });
+      if (result === 'linked') {
+        this.logger.log(
+          `Stripe checkout linked customer ${stripeCustomerId} to account ${match.idAccount}`,
+        );
+        return;
+      }
+
+      this.logger.error(
+        `Stripe checkout not applied for account ${match.idAccount} (${result}). Customer ${stripeCustomerId} was not linked and no account was created.`,
+      );
+      return;
+    }
 
     await this.accountsService.createAccountWithUser({
       name,
-      type,
+      type: mapStripePriceIdToAccountType(priceIds, catalog),
       email,
       password: null,
       requiresPasswordChange: true,
@@ -195,6 +219,20 @@ export class StripeWebhookService {
         `Stripe subscription sync skipped; no account for customer ${stripeCustomerId}`,
       );
     }
+  }
+
+  private readPriceCatalog(): StripePriceIdCatalog {
+    return {
+      coach: this.configService.get<string>('STRIPE_PRICE_ID_COACH')?.trim(),
+      studio: this.configService.get<string>('STRIPE_PRICE_ID_STUDIO')?.trim(),
+      pro: this.configService.get<string>('STRIPE_PRICE_ID_PRO')?.trim(),
+      business: this.configService
+        .get<string>('STRIPE_PRICE_ID_BUSINESS')
+        ?.trim(),
+      personalized: this.configService
+        .get<string>('STRIPE_PRICE_ID_PERSONALIZED')
+        ?.trim(),
+    };
   }
 
   private verifyStripeEvent(

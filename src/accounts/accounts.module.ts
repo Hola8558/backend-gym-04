@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { RolesGuard } from '../common/guards/roles.guard';
 import { AccountEmailStatusController } from './account-email-status.controller';
 import { AccountsController } from './accounts.controller';
+import { AccountProvisionGuard } from './guards/account-provision.guard';
 import { EmailStatusOriginGuard } from './guards/email-status-origin.guard';
 import { AccountsService } from './accounts.service';
 import { stripeClientProvider } from './providers/stripe-client.provider';
@@ -17,6 +18,7 @@ import { StripeWebhookService } from './stripe-webhook.service';
     StripeBillingService,
     RolesGuard,
     EmailStatusOriginGuard,
+    AccountProvisionGuard,
   ],
   exports: [AccountsService],
 })

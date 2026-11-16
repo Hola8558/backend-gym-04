@@ -11,7 +11,13 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import { UserRole } from '@prisma/client';
-import { ApiBearerAuth, ApiOkResponse, ApiOperation, ApiTags } from '@nestjs/swagger';
+import {
+  ApiBearerAuth,
+  ApiExcludeEndpoint,
+  ApiOkResponse,
+  ApiOperation,
+  ApiTags,
+} from '@nestjs/swagger';
 import type { Request } from 'express';
 import { CurrentUser } from '../auth/current-user.decorator';
 import type { JwtPayload } from '../auth/jwt.strategy';
@@ -19,9 +25,9 @@ import { Public } from '../auth/public.decorator';
 import { Roles } from '../common/decorators/roles.decorator';
 import { RolesGuard } from '../common/guards/roles.guard';
 import { AccountsService } from './accounts.service';
-// CreateAccountDto kept for the commented manual POST /accounts route below.
-// import { CreateAccountDto } from './dto/create-account.dto';
 import { AccountSubscriptionResponseDto } from './dto/account-subscription-response.dto';
+import { ProvisionAccountDto } from './dto/provision-account.dto';
+import { AccountProvisionGuard } from './guards/account-provision.guard';
 import { BillingPortalSessionResponseDto } from './dto/billing-portal-session-response.dto';
 import { DeleteAccountTestDto } from './dto/delete-account-test.dto';
 import { SoftDeleteAccountResponseDto } from './dto/soft-delete-account-response.dto';
@@ -43,13 +49,14 @@ export class AccountsController {
     return { data: [], placeholder: true };
   }
 
-  // Manual account creation disabled: accounts are created only via Stripe webhook
-  // (checkout.session.completed → createAccountWithUser).
-  // @Public()
-  // @Post()
-  // create(@Body() dto: CreateAccountDto) {
-  //   return this.accountsService.createAccountWithUser(dto);
-  // }
+  @Public()
+  @UseGuards(AccountProvisionGuard)
+  @Post('provision')
+  @HttpCode(HttpStatus.CREATED)
+  @ApiExcludeEndpoint()
+  provision(@Body() dto: ProvisionAccountDto) {
+    return this.accountsService.provisionAccountWithoutStripe(dto);
+  }
 
   @Public()
   @Post('webhooks/stripe')

@@ -25,7 +25,8 @@
     "db:update-feature-descriptions": "ts-node prisma/update-feature-descriptions.ts",
     "db:sync-role-features": "ts-node scripts/sync-role-features.ts",
     "db:dev": "npx prisma migrate dev",
-    "db:prod:deploy": "dotenv -e .env.prod -- npx prisma migrate deploy"
+    "db:prod:deploy": "dotenv -e .env.prod -- npx prisma migrate deploy",
+    "account:provision": "node scripts/provision-account.mjs"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1093.0",
