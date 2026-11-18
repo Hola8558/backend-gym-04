@@ -26,6 +26,7 @@ import { Roles } from '../common/decorators/roles.decorator';
 import { RolesGuard } from '../common/guards/roles.guard';
 import { AccountsService } from './accounts.service';
 import { AccountSubscriptionResponseDto } from './dto/account-subscription-response.dto';
+import { DeprovisionAccountDto } from './dto/deprovision-account.dto';
 import { ProvisionAccountDto } from './dto/provision-account.dto';
 import { AccountProvisionGuard } from './guards/account-provision.guard';
 import { BillingPortalSessionResponseDto } from './dto/billing-portal-session-response.dto';
@@ -56,6 +57,17 @@ export class AccountsController {
   @ApiExcludeEndpoint()
   provision(@Body() dto: ProvisionAccountDto) {
     return this.accountsService.provisionAccountWithoutStripe(dto);
+  }
+
+  @Public()
+  @UseGuards(AccountProvisionGuard)
+  @Post('deprovision')
+  @HttpCode(HttpStatus.OK)
+  @ApiExcludeEndpoint()
+  deprovision(
+    @Body() dto: DeprovisionAccountDto,
+  ): Promise<SoftDeleteAccountResponseDto> {
+    return this.accountsService.deprovisionAccount(dto);
   }
 
   @Public()

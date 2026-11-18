@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   ConflictException,
   Injectable,
   InternalServerErrorException,
@@ -18,14 +19,17 @@ import { DEFAULT_GLOBAL_MEASUREMENTS } from './constants/default-global-measurem
 import { CUSTOMERS_LIMIT_BY_TYPE } from './constants/customers-limit-by-type.const';
 import { resolveUnitSystem } from './utils/resolve-unit-system.util';
 import { DEFAULT_MANDATORY_CUSTOMER_FIELDS } from '../common/constants/customer-form-field-ids.const';
+import { DeprovisionAccountDto } from './dto/deprovision-account.dto';
 import { EmailStatusValidationResponseDto } from './dto/email-status-validation-response.dto';
 import { ProvisionAccountDto } from './dto/provision-account.dto';
 import { SoftDeleteAccountResponseDto } from './dto/soft-delete-account-response.dto';
 import { StripeBillingService } from './stripe-billing.service';
+import type { BusinessAccountIdentity } from './types/business-account-identity.type';
 import type { BusinessAccountStripeLink } from './types/business-account-stripe-link.type';
 import type { CreateAccountWithUserInput } from './types/create-account-with-user-input.type';
 import type { LinkStripeBillingInput } from './types/link-stripe-billing-input.type';
 import type { StripeBillingLinkResult } from './types/stripe-billing-link-result.type';
+import { accountNamesMatch } from './utils/account-names-match.util';
 import { mapAccountStatusToEmailValidationStatus } from './utils/map-account-status-to-email-validation-status.util';
 import { softDeleteAccountCascade } from './utils/soft-delete-account-cascade.util';
 import { toEmailStatusValidationResponseDto } from './utils/to-email-status-validation-response.mapper';
@@ -191,6 +195,56 @@ export class AccountsService {
       branch: dto.branch,
       requiresPasswordChange: true,
     });
+  }
+
+  async deprovisionAccount(
+    dto: DeprovisionAccountDto,
+  ): Promise<SoftDeleteAccountResponseDto> {
+    const matches = await this.findNonDeletedBusinessAccountsByEmail(dto.email);
+    if (matches.length === 0) {
+      throw new NotFoundException('ACCOUNTS.ERRORS.NOT_FOUND');
+    }
+    if (matches.length > 1) {
+      throw new ConflictException('ACCOUNTS.ERRORS.AMBIGUOUS_EMAIL');
+    }
+
+    const match = matches[0];
+    if (!accountNamesMatch(match.name, dto.name)) {
+      throw new BadRequestException('ACCOUNTS.ERRORS.NAME_MISMATCH');
+    }
+
+    return this.softDeleteAccountById(match.idAccount);
+  }
+
+  async findNonDeletedBusinessAccountsByEmail(
+    email: string,
+  ): Promise<BusinessAccountIdentity[]> {
+    const users = await this.prisma.user.findMany({
+      where: {
+        email: { equals: email.trim(), mode: 'insensitive' },
+        status: { not: GenericStatus.deleted },
+        role: { in: [UserRole.owner, UserRole.solo_coach] },
+        account: {
+          status: { not: GenericStatus.deleted },
+        },
+      },
+      select: {
+        idAccount: true,
+        account: { select: { name: true } },
+      },
+    });
+
+    const byAccount = new Map<number, BusinessAccountIdentity>();
+    for (const user of users) {
+      if (byAccount.has(user.idAccount)) {
+        continue;
+      }
+      byAccount.set(user.idAccount, {
+        idAccount: user.idAccount,
+        name: user.account.name,
+      });
+    }
+    return [...byAccount.values()];
   }
 
   async findBusinessAccountsForStripeLink(
